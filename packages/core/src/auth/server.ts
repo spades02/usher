@@ -6,7 +6,7 @@ import {
   type MetadataFetch,
 } from "./clients.js";
 import {
-  PAGE_HEADERS,
+  pageHeaders,
   renderConfirmPage,
   renderConsentPage,
   renderDonePage,
@@ -17,6 +17,7 @@ import type { AuthStore, ClientRecord, ConfirmationRecord, GrantRecord } from ".
 import type { ConfirmationVerdict } from "../pipeline.js";
 import type { UsherEvent } from "../plugins/types.js";
 import type { IdentityAdapter, Principal, UsherUser } from "./types.js";
+import type { ResolvedTheme } from "../ui/theme.js";
 
 export interface AuthServerOptions {
   appName: string;
@@ -33,6 +34,8 @@ export interface AuthServerOptions {
   fetchClientMetadata: MetadataFetch;
   /** Delivers grant and confirmation events to plugins (ADR 0006). */
   emit: (event: UsherEvent) => Promise<void>;
+  /** Branding for the consent and approval pages (ADR 0009). */
+  theme: ResolvedTheme;
 }
 
 const CODE_TTL = 60;
@@ -71,6 +74,8 @@ export function createAuthServer(options: AuthServerOptions) {
   const toolsByScope = new Map(tools.map((t) => [toolScope(t.name), t]));
   const toolsByName = new Map(tools.map((t) => [t.name, t]));
   const allScopes = [...toolsByScope.keys()];
+  const theme = options.theme;
+  const PAGE_HEADERS_THEMED = pageHeaders(theme);
 
   const agentOf = (grant: GrantRecord) => ({
     clientId: grant.clientId,
@@ -225,8 +230,9 @@ export function createAuthServer(options: AuthServerOptions) {
         update: existing !== null,
         action: u.authorize,
         consentToken,
+        theme,
       }),
-      { headers: PAGE_HEADERS },
+      { headers: PAGE_HEADERS_THEMED },
     );
   }
 
@@ -559,8 +565,9 @@ export function createAuthServer(options: AuthServerOptions) {
         user: found.user,
         action: u.confirm + id,
         confirmToken,
+        theme,
       }),
-      { headers: PAGE_HEADERS },
+      { headers: PAGE_HEADERS_THEMED },
     );
   }
 
@@ -595,7 +602,7 @@ export function createAuthServer(options: AuthServerOptions) {
   }
 
   function done(heading: string, message: string): Response {
-    return new Response(renderDonePage(appName, heading, message), { headers: PAGE_HEADERS });
+    return new Response(renderDonePage(appName, heading, message, theme), { headers: PAGE_HEADERS_THEMED });
   }
 
   function unauthorized(u: Urls, invalidToken = false): Response {
@@ -660,7 +667,7 @@ export function createAuthServer(options: AuthServerOptions) {
   }
 
   function errorPage(message: string, status = 400, heading?: string): Response {
-    return new Response(renderErrorPage(appName, message, heading), { status, headers: PAGE_HEADERS });
+    return new Response(renderErrorPage(appName, message, heading, theme), { status, headers: PAGE_HEADERS_THEMED });
   }
 
   return {

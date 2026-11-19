@@ -340,6 +340,7 @@ function standaloneConfig(appPort: number): StandaloneConfig {
     database: "sqlite::memory:",
     webhookSecret: WEBHOOK_SECRET,
     adminToken: ADMIN_TOKEN,
+    theme: { accentColor: "#0a7a55", links: { accountSettings: "/account/agents" } },
     identity: { sessionUrl: `http://127.0.0.1:${appPort}/usher/session`, loginUrl: `${BASE}/login?next={returnTo}` },
     tools: [
       { name: "list_orders", description: "List orders.", effect: "read", input: { type: "object", properties: {} }, url: hook("orders") },
@@ -426,6 +427,17 @@ describe("usherjs serve (standalone, for apps not written in JS)", () => {
     const login = new URL(res.headers.get("location")!);
     expect(login.origin + login.pathname).toBe(`${BASE}/login`);
     expect(login.searchParams.get("next")?.startsWith(`${BASE}/api/usher/oauth/authorize?`)).toBe(true);
+  });
+
+  it("serves the customer widgets and their API on the app's domain, with its theme", async () => {
+    const { target } = await start();
+    await authorizeAgent(target, { mode: "dcr" });
+    expect((await target.handler(new Request(`${BASE}/api/usher/elements.js`))).status).toBe(200);
+    const res = await target.handler(
+      new Request(`${BASE}/api/usher/account/agents`, { headers: { cookie: "session=user_1", "x-usher-request": "1" } }),
+    );
+    expect((await res.json()).agents).toHaveLength(1);
+    await expect(createStandaloneServer({ ...standaloneConfig(1), theme: { logoUrl: "javascript:x" } })).rejects.toThrow(/logoUrl/);
   });
 
   it("admin API: the app's backend lists and revokes connected agents", async () => {

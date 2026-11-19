@@ -5,6 +5,10 @@ import { isOriginAllowed } from "./origin.js";
 import { createCallPipeline } from "./pipeline.js";
 import { assertValidPlugins, type UsherPlugin } from "./plugins/types.js";
 import { createMcpSurface } from "./surfaces/mcp.js";
+import { createAccountApi } from "./ui/account.js";
+import { ELEMENTS_SCRIPT } from "./ui/elements.js";
+import { resolveTheme, type UsherTheme } from "./ui/theme.js";
+import type { QueryableAuditSink } from "./plugins/audit-log.js";
 import { assertValidTools, toolScope, type AnyUsherTool } from "./tool.js";
 
 export { memoryStore } from "./auth/store.js";
@@ -22,6 +26,8 @@ export { checkDeployment, type DeploymentCheck } from "./doctor.js";
 export { ToolError } from "./errors.js";
 export { httpIdentity, webhookTool, verifyWebhook, type HttpIdentityOptions, type WebhookToolOptions } from "./remote.js";
 export { toRouteHandlers, type RouteHandlers } from "./route-handlers.js";
+export type { UsherTheme } from "./ui/theme.js";
+export type { AgentView } from "./ui/account.js";
 export type { CallResult } from "./pipeline.js";
 export {
   postgresExecutor,
@@ -100,6 +106,13 @@ export interface UsherOptions {
    * (`plugin`). The agent only sees a generic message. Default: `console.error`.
    */
   onError?: (error: unknown, info: { tool?: string; plugin?: string }) => void;
+  /** Branding for the consent and approval pages Usher renders on your domain (ADR 0009). */
+  theme?: UsherTheme;
+  /**
+   * The customer API behind `<usher-agents>` (`{basePath}/account/*`).
+   * Pass your audit sink to show customers what their agents did.
+   */
+  account?: { activity?: QueryableAuditSink };
   auth?: {
     /** Access token lifetime in seconds. Default: 3600 (1 hour). */
     accessTokenTtl?: number;
@@ -166,8 +179,10 @@ export function createUsher(options: UsherOptions): Usher {
     confirmationGate: (...args) => auth.confirmationGate(...args),
   });
 
+  const theme = resolveTheme(options.theme);
   const auth = createAuthServer({
     emit: pipeline.emit,
+    theme,
     appName: options.app.name,
     basePath,
     baseUrl: options.baseUrl,
@@ -216,6 +231,15 @@ export function createUsher(options: UsherOptions): Usher {
   const rootPaths = new Set([...RESOURCE_METADATA_PATHS(basePath), ...AUTH_SERVER_METADATA_PATHS(basePath)]);
   const matches = (pathname: string) => pathname.startsWith(`${basePath}/`) || rootPaths.has(pathname);
   const ownOrigin = options.baseUrl ? new URL(options.baseUrl).origin : undefined;
+  const account = createAccountApi({
+    basePath,
+    appName: options.app.name,
+    ownOrigin,
+    identity: options.identity,
+    tools: options.tools,
+    grants: auth.grants,
+    activity: options.account?.activity,
+  });
 
   return {
     grants: auth.grants,
@@ -242,7 +266,16 @@ export function createUsher(options: UsherOptions): Usher {
         return mcp.fetch(request, principal, token);
       }
 
-      return (await auth.route(request, pathname)) ?? new Response("Not found", { status: 404 });
+      if (pathname === `${basePath}/elements.js`) {
+        return new Response(ELEMENTS_SCRIPT, {
+          headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" },
+        });
+      }
+      return (
+        (await account.route(request, pathname)) ??
+        (await auth.route(request, pathname)) ??
+        new Response("Not found", { status: 404 })
+      );
     },
   };
 }

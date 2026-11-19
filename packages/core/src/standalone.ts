@@ -23,6 +23,7 @@ import type { UsherSchema } from "./schema.js";
 import { timingSafeEqual } from "./auth/crypto.js";
 import { postgresExecutor, sqliteExecutor, sqlStorage, type SqlExecutor } from "./storage/sql.js";
 import type { AnyUsherTool } from "./tool.js";
+import type { UsherTheme } from "./ui/theme.js";
 
 // ------------------------------------------------------------------ config
 
@@ -59,6 +60,8 @@ export const standaloneConfigSchema = z.object({
   tools: z.array(toolConfig).min(1),
   rateLimit: z.object({ limit: z.number().int().positive(), windowSeconds: z.number().int().positive() }).optional(),
   allowedOrigins: z.array(z.string()).optional(),
+  /** Branding for consent and approval pages (ADR 0009). Validated when the server starts. */
+  theme: z.record(z.string(), z.unknown()).optional(),
   port: z.number().int().min(0).max(65535).optional(),
 });
 
@@ -162,6 +165,9 @@ export async function createStandaloneServer(input: StandaloneConfig): Promise<S
     secret: config.secret,
     instructions: config.instructions,
     allowedOrigins: config.allowedOrigins,
+    theme: config.theme as UsherTheme | undefined,
+    // <usher-agents> on the app's pages shows the audit trail to each customer.
+    account: { activity: storage.auditSink },
     identity: httpIdentity(config.identity),
     store: storage.store,
     tools,

@@ -20,6 +20,10 @@
     "./standalone": {
       "types": "./dist/standalone.d.ts",
       "import": "./dist/standalone.js"
+    },
+    "./elements": {
+      "types": "./dist/elements.d.ts",
+      "import": "./dist/elements.js"
     }
   },
   "bin": {
@@ -45,6 +49,7 @@
     "@types/express": "5.0.3",
     "@types/node": "24.10.1",
     "express": "5.1.0",
+    "happy-dom": "20.0.10",
     "typescript": "5.9.3",
     "vitest": "3.2.4",
     "zod": "4.6.7"

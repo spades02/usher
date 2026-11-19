@@ -33,6 +33,7 @@ const usher = createUsher({
       description: "Cancel an order that has not shipped yet.",
       input: z.object({ orderId: z.string() }),
       effect: "destructive",
+      confirm: false, // Confirmation is covered in permissions.test.ts.
       idempotent: true,
       handler: ({ orderId }) => {
         const order = orders.find((o) => o.id === orderId);

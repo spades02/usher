@@ -7,7 +7,7 @@ import { isUsherSchema, toJsonSchema, type InferOutput, type UsherSchema } from 
  * - `read`: never changes state (list orders, check balance).
  * - `write`: changes state in a recoverable way (add to cart, update address).
  * - `destructive`: hard or impossible to undo (cancel order, delete account,
- *   send payment). Phase 4 requires confirmation for these.
+ *   send payment). The customer must approve each call (see `UsherTool.confirm`).
  */
 export type ToolEffect = "read" | "write" | "destructive";
 
@@ -52,6 +52,13 @@ export interface UsherTool<
   effect: ToolEffect;
   /** True if repeating a call with the same input has no extra effect. Lets agents retry safely. */
   idempotent?: boolean;
+  /**
+   * Require the customer to approve each call on your own site before it
+   * runs (ADR 0005). Default: `true` for `destructive` tools, `false`
+   * otherwise. Pass a function to describe the action in plain words on the
+   * approval page, e.g. `(input) => "Cancel order " + input.orderId`.
+   */
+  confirm?: boolean | ((input: InferOutput<Input>) => string);
   /** The business logic. Throw {@link ToolError} for failures the agent should see. */
   handler: (
     input: InferOutput<Input>,
@@ -70,6 +77,16 @@ export function defineTool<Input extends UsherSchema, Output extends UsherSchema
 
 /** Any tool, regardless of its schema types (`any` is needed for handler variance). */
 export type AnyUsherTool = UsherTool<any, any>;
+
+/** Whether each call needs the customer's out-of-band approval (ADR 0005). */
+export function needsConfirmation(tool: AnyUsherTool): boolean {
+  return tool.confirm === undefined ? tool.effect === "destructive" : tool.confirm !== false;
+}
+
+/** The OAuth scope that unlocks one tool (ADR 0005). */
+export function toolScope(name: string): string {
+  return `tool:${name}`;
+}
 
 const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
 const EFFECTS: readonly ToolEffect[] = ["read", "write", "destructive"];
@@ -93,6 +110,9 @@ export function assertValidTools(tools: readonly AnyUsherTool[]): void {
     }
     if (!EFFECTS.includes(tool.effect)) {
       throw new Error(`${where}: effect must be one of ${EFFECTS.join(", ")}`);
+    }
+    if (tool.confirm !== undefined && typeof tool.confirm !== "boolean" && typeof tool.confirm !== "function") {
+      throw new Error(`${where}: confirm must be a boolean or a function returning a description`);
     }
     assertObjectSchema(tool.input, `${where} input`);
     if (tool.output !== undefined) assertObjectSchema(tool.output, `${where} output`, "output");

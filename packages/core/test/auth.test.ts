@@ -218,9 +218,10 @@ describe("consent screen", () => {
 
   it("names the agent and its verified domain, and flags irreversible actions", async () => {
     const html = await (await page()).text();
-    expect(html).toContain("Test Agent wants to access your Example Shop account");
+    expect(html).toContain("Test Agent wants access to your Example Shop account");
     expect(html).toContain("Verified domain: <strong>agent.example</strong>");
-    expect(html).toMatch(/class="destructive">Irreversible actions<\/h3><ul><li><strong>delete_account/);
+    expect(html).toMatch(/class="destructive">Irreversible actions<\/h3><ul><li><label><input type="checkbox" name="scope" value="tool:delete_account" checked> <strong>delete_account/);
+    expect(html).toContain("Asks you before each use.");
   });
 
   it("cannot be framed or cached", async () => {

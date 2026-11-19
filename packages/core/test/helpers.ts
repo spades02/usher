@@ -107,11 +107,24 @@ export class MemoryProvider implements OAuthClientProvider {
 export const fetchVia = (usher: Usher) => (input: RequestInfo | URL, init?: RequestInit) =>
   usher.handler(new Request(input, init));
 
+/** Checkbox values on a consent page: every offered scope, and the ones ticked by default. */
+export function consentScopes(html: string) {
+  const boxes = [...html.matchAll(/<input type="checkbox" name="scope" value="([^"]+)"( checked)?>/g)];
+  return { offered: boxes.map((m) => m[1]!), checked: boxes.filter((m) => m[2]).map((m) => m[1]!) };
+}
+
+export interface ConsentOptions {
+  userId?: string;
+  decision?: "allow" | "deny";
+  /** Scopes to tick before submitting. Default: whatever the page pre-ticks. */
+  scopes?: string[];
+}
+
 /** Plays the customer's browser on the consent screen. Returns the agent callback URL. */
 export async function consentInBrowser(
   usher: Usher,
   authorizationUrl: URL | string,
-  { userId = "user_1", decision = "allow" }: { userId?: string; decision?: "allow" | "deny" } = {},
+  { userId = "user_1", decision = "allow", scopes }: ConsentOptions = {},
 ): Promise<URL> {
   const cookie = `session=${userId}`;
   const page = await usher.handler(new Request(authorizationUrl, { headers: { cookie } }));
@@ -126,7 +139,11 @@ export async function consentInBrowser(
     new Request(`${BASE}/api/usher/oauth/authorize`, {
       method: "POST",
       headers: { cookie, origin: BASE, "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ consent_token: consentToken!, decision }),
+      body: new URLSearchParams([
+        ["consent_token", consentToken!],
+        ["decision", decision],
+        ...(scopes ?? consentScopes(html).checked).map((s) => ["scope", s]),
+      ]),
     }),
   );
   expect(decided.status).toBe(302);
@@ -136,13 +153,13 @@ export async function consentInBrowser(
 /** Runs the full MCP authorization flow with the official SDK client. */
 export async function authorizeAgent(
   usher: Usher,
-  { userId = "user_1", mode = "cimd" }: { userId?: string; mode?: "cimd" | "dcr" } = {},
+  { userId = "user_1", mode = "cimd", scopes }: { userId?: string; mode?: "cimd" | "dcr"; scopes?: string[] } = {},
 ) {
   const provider = new MemoryProvider(mode);
   const fetchFn = fetchVia(usher);
 
   expect(await auth(provider, { serverUrl: MCP_URL, fetchFn })).toBe("REDIRECT");
-  const callback = await consentInBrowser(usher, provider.authorizationUrl!, { userId });
+  const callback = await consentInBrowser(usher, provider.authorizationUrl!, { userId, scopes });
   const code = callback.searchParams.get("code");
   expect(code).toBeTruthy();
 
@@ -157,11 +174,13 @@ export async function authorizeAgent(
 }
 
 /** An authorized, connected MCP client acting for `userId`. */
-export async function connectAgent(usher: Usher, opts: { userId?: string; mode?: "cimd" | "dcr" } = {}) {
+export async function connectAgent(
+  usher: Usher,
+  opts: { userId?: string; mode?: "cimd" | "dcr"; scopes?: string[] } = {},
+) {
   const { provider } = await authorizeAgent(usher, opts);
   const client = new Client({ name: "test-agent", version: "0.0.1" });
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: fetchVia(usher), authProvider: provider }),
-  );
-  return client;
+  const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: fetchVia(usher), authProvider: provider });
+  await client.connect(transport);
+  return Object.assign(client, { provider, http: transport });
 }

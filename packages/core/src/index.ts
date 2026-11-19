@@ -1,26 +1,28 @@
 import { createAuthServer } from "./auth/server.js";
 import { memoryStore, type AuthStore, type GrantRecord } from "./auth/store.js";
-import type { IdentityAdapter } from "./auth/types.js";
+import type { IdentityAdapter, Principal } from "./auth/types.js";
 import { isOriginAllowed } from "./origin.js";
 import { createMcpSurface } from "./surfaces/mcp.js";
-import { assertValidTools, type AnyUsherTool } from "./tool.js";
+import { assertValidTools, toolScope, type AnyUsherTool } from "./tool.js";
 
 export { memoryStore } from "./auth/store.js";
 export type {
   AuthStore,
   ClientRecord,
   CodeRecord,
+  ConfirmationRecord,
   Consumed,
   GrantRecord,
   TokenRecord,
 } from "./auth/store.js";
-export type { IdentityAdapter, Principal, UsherUser } from "./auth/types.js";
+export type { CallDecision, IdentityAdapter, Principal, UsherUser } from "./auth/types.js";
 export { ToolError } from "./errors.js";
 export type { InferInput, InferOutput, UsherSchema } from "./schema.js";
 export {
   defineTool,
   type AnyUsherTool,
   type ToolContext,
+  toolScope,
   type ToolEffect,
   type UsherTool,
 } from "./tool.js";
@@ -76,6 +78,8 @@ export interface Usher {
   grants: {
     list(userId: string): Promise<GrantRecord[]>;
     revoke(userId: string, grantId: string): Promise<void>;
+    /** Changes which tools a connected agent may use (scopes from `toolScope(name)`). Applies on its next call. */
+    setScopes(userId: string, grantId: string, scopes: string[]): Promise<void>;
   };
 }
 
@@ -116,7 +120,30 @@ export function createUsher(options: UsherOptions): Usher {
     onError:
       options.onError ??
       ((error, { tool }) => console.error(`[usher] Tool "${tool}" failed:`, error)),
+    policy: auth.checkCall,
   });
+  const toolNames = new Set(options.tools.map((t) => t.name));
+
+  /**
+   * Finds a tools/call for a tool the customer hasn't granted, before the
+   * MCP layer runs, so the agent gets an HTTP 403 `insufficient_scope` it
+   * can answer by asking the customer (MCP step-up authorization).
+   */
+  async function missingScope(request: Request, principal: Principal): Promise<string | null> {
+    if (request.method !== "POST") return null;
+    let body: unknown;
+    try {
+      body = await request.clone().json();
+    } catch {
+      return null; // Malformed bodies are the MCP layer's to reject.
+    }
+    for (const message of Array.isArray(body) ? body : [body]) {
+      const name = (message as { method?: unknown; params?: { name?: unknown } } | null)?.params?.name;
+      if ((message as { method?: unknown } | null)?.method !== "tools/call" || typeof name !== "string") continue;
+      if (toolNames.has(name) && !principal.scopes.includes(toolScope(name))) return toolScope(name);
+    }
+    return null;
+  }
 
   return {
     grants: auth.grants,
@@ -132,6 +159,8 @@ export function createUsher(options: UsherOptions): Usher {
         }
         const principal = await auth.authenticate(request);
         if (principal instanceof Response) return principal;
+        const scope = await missingScope(request, principal);
+        if (scope) return auth.insufficientScope(request, principal, scope);
         const token = request.headers.get("authorization")?.split(/\s+/)[1] ?? "";
         return mcp.fetch(request, principal, token);
       }

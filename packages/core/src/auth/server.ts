@@ -1,14 +1,20 @@
-import type { AnyUsherTool } from "../tool.js";
+import { needsConfirmation, toolScope, type AnyUsherTool } from "../tool.js";
 import {
   OAuthError,
   createClientResolver,
   parseRedirectUris,
   type MetadataFetch,
 } from "./clients.js";
-import { PAGE_HEADERS, renderConsentPage, renderErrorPage } from "./consent-page.js";
+import {
+  PAGE_HEADERS,
+  renderConfirmPage,
+  renderConsentPage,
+  renderDonePage,
+  renderErrorPage,
+} from "./consent-page.js";
 import { randomToken, sha256, signPayload, verifyPayload, verifyPkce } from "./crypto.js";
-import type { AuthStore, ClientRecord, GrantRecord } from "./store.js";
-import type { IdentityAdapter, Principal, UsherUser } from "./types.js";
+import type { AuthStore, ClientRecord, ConfirmationRecord, GrantRecord } from "./store.js";
+import type { CallDecision, IdentityAdapter, Principal, UsherUser } from "./types.js";
 
 export interface AuthServerOptions {
   appName: string;
@@ -27,14 +33,26 @@ export interface AuthServerOptions {
 
 const CODE_TTL = 60;
 const CONSENT_TTL = 10 * 60;
+/** How long the customer has to approve a confirmed call, and the agent to retry it. */
+const CONFIRM_TTL = 15 * 60;
+const MAX_DETAILS = 10_000;
 
 interface ConsentPayload {
+  k: "consent"; // payload kind, so a confirm token can never pass as a consent token
   u: string; // user id
   c: string; // client id
   r: string; // redirect uri
   ch: string; // PKCE challenge
   res: string; // resource
   s?: string; // state
+  o: string[]; // scopes offered on the page; the approved set must be a subset
+  exp: number;
+}
+
+interface ConfirmPayload {
+  k: "confirm";
+  id: string; // confirmation id
+  u: string; // user id
   exp: number;
 }
 
@@ -46,6 +64,19 @@ export function createAuthServer(options: AuthServerOptions) {
   const { basePath, store, identity, secret, tools, appName } = options;
   const clients = createClientResolver(store, options.fetchClientMetadata);
   const now = () => Math.floor(Date.now() / 1000);
+  const toolsByScope = new Map(tools.map((t) => [toolScope(t.name), t]));
+  const toolsByName = new Map(tools.map((t) => [t.name, t]));
+  const allScopes = [...toolsByScope.keys()];
+
+  /**
+   * Reads the OAuth `scope` parameter. Unknown scopes (`openid`,
+   * `offline_access`, removed tools) are ignored. No known scope means an
+   * open request: the customer picks from every tool.
+   */
+  function parseScope(value: string | null): { explicit: boolean; scopes: string[] } {
+    const scopes = [...new Set((value ?? "").split(/\s+/).filter((s) => toolsByScope.has(s)))];
+    return { explicit: scopes.length > 0, scopes };
+  }
 
   function urls(request: Request) {
     const origin = (options.baseUrl ?? new URL(request.url).origin).replace(/\/+$/, "");
@@ -56,6 +87,7 @@ export function createAuthServer(options: AuthServerOptions) {
       resource: `${issuer}/mcp`,
       resourceMetadata: `${origin}/.well-known/oauth-protected-resource${basePath}/mcp`,
       authorize: `${issuer}/oauth/authorize`,
+      confirm: `${issuer}/confirm/`,
       token: `${issuer}/oauth/token`,
       register: `${issuer}/oauth/register`,
       revoke: `${issuer}/oauth/revoke`,
@@ -131,23 +163,45 @@ export function createAuthServer(options: AuthServerOptions) {
       return redirect(identity.loginUrl(`${u.authorize}?${params.toString()}`));
     }
 
+    const requested = parseScope(params.get("scope"));
     const existing = await store.findActiveGrant(user.id, client.clientId);
-    if (existing && params.get("prompt") !== "consent") {
+    const covered = !requested.explicit || requested.scopes.every((s) => existing?.scopes.includes(s));
+    if (existing && covered && params.get("prompt") !== "consent") {
+      // Nothing new to decide: reconnects and narrower requests skip the screen.
       return issueCode(existing, { redirectUri, challenge, resource: u.resource, state }, u);
     }
 
+    // Offer what was asked for plus what's already granted, so approving a
+    // step-up never silently drops earlier permissions.
+    const granted = (existing?.scopes ?? []).filter((s) => toolsByScope.has(s));
+    const offered = [...new Set([...granted, ...(requested.explicit ? requested.scopes : allScopes)])];
+    const checked = new Set(requested.explicit || !existing ? offered : granted);
+
     const consentToken = await signPayload(secret, {
+      k: "consent",
       u: user.id,
       c: client.clientId,
       r: redirectUri,
       ch: challenge,
       res: u.resource,
       s: state,
+      o: offered,
       exp: now() + CONSENT_TTL,
     } satisfies ConsentPayload);
 
+    const shown = tools.filter((t) => offered.includes(toolScope(t.name)));
     return new Response(
-      renderConsentPage({ appName, client, user, redirectUri, tools, action: u.authorize, consentToken }),
+      renderConsentPage({
+        appName,
+        client,
+        user,
+        redirectUri,
+        tools: shown,
+        checked,
+        update: existing !== null,
+        action: u.authorize,
+        consentToken,
+      }),
       { headers: PAGE_HEADERS },
     );
   }
@@ -160,7 +214,7 @@ export function createAuthServer(options: AuthServerOptions) {
     const form = new URLSearchParams(await request.text());
     // ...and carry a signed token bound to the signed-in user and the exact request.
     const consent = await verifyPayload<ConsentPayload>(secret, form.get("consent_token") ?? "");
-    if (!consent || consent.exp < now()) {
+    if (!consent || consent.k !== "consent" || consent.exp < now()) {
       return errorPage("This approval page has expired. Start connecting the agent again.");
     }
     const user = await identity.getUser(request);
@@ -174,7 +228,9 @@ export function createAuthServer(options: AuthServerOptions) {
     }
     if (!client.redirectUris.includes(consent.r)) return errorPage("The agent's redirect address changed.");
 
-    if (form.get("decision") !== "allow") {
+    // Only scopes that were on the page count; anything else in the form is ignored.
+    const approved = [...new Set(form.getAll("scope"))].filter((s) => consent.o.includes(s));
+    if (form.get("decision") !== "allow" || approved.length === 0) {
       return redirectTo(consent.r, {
         error: "access_denied",
         error_description: "The user denied access",
@@ -183,18 +239,26 @@ export function createAuthServer(options: AuthServerOptions) {
       });
     }
 
-    const grant = await createGrant(user, client);
+    // One grant per customer + agent: a step-up replaces its scopes, it doesn't add a second grant.
+    const existing = await store.findActiveGrant(user.id, client.clientId);
+    let grant: GrantRecord;
+    if (existing) {
+      await store.updateGrantScopes(existing.id, approved);
+      grant = { ...existing, scopes: approved };
+    } else {
+      grant = await createGrant(user, client, approved);
+    }
     return issueCode(grant, { redirectUri: consent.r, challenge: consent.ch, resource: consent.res, state: consent.s }, u);
   }
 
-  async function createGrant(user: UsherUser, client: ClientRecord): Promise<GrantRecord> {
+  async function createGrant(user: UsherUser, client: ClientRecord, scopes: string[]): Promise<GrantRecord> {
     const grant: GrantRecord = {
       id: randomToken("grant_"),
       userId: user.id,
       clientId: client.clientId,
       clientName: client.clientName,
       clientSource: client.source,
-      scopes: [],
+      scopes,
       createdAt: now(),
     };
     await store.saveGrant(grant);
@@ -285,6 +349,8 @@ export function createAuthServer(options: AuthServerOptions) {
       token_type: "Bearer",
       expires_in: options.accessTokenTtl,
       refresh_token: refreshToken,
+      // Lets clients compute the scope union on step-up (MCP scope selection).
+      scope: grant.scopes.join(" "),
     });
   }
 
@@ -360,7 +426,141 @@ export function createAuthServer(options: AuthServerOptions) {
       user: { id: grant.userId },
       agent: { clientId: grant.clientId, name: grant.clientName, verified: grant.clientSource === "cimd" },
       grantId: grant.id,
+      // Live from the grant: permission changes apply on the agent's very next call.
+      scopes: [...grant.scopes],
     };
+  }
+
+  /**
+   * 403 that tells a compliant MCP client to ask the customer for one more
+   * tool (RFC 6750 §3.1 `insufficient_scope`, MCP step-up authorization).
+   */
+  function insufficientScope(request: Request, principal: Principal, scope: string): Response {
+    const u = urls(request);
+    const wanted = [...new Set([...principal.scopes.filter((s) => toolsByScope.has(s)), scope])].join(" ");
+    const description = `The customer hasn't allowed this agent to use ${scope.slice("tool:".length)}`;
+    return Response.json(
+      { error: "insufficient_scope", error_description: description },
+      {
+        status: 403,
+        headers: {
+          ...CORS,
+          "www-authenticate": `Bearer error="insufficient_scope", scope="${wanted}", resource_metadata="${u.resourceMetadata}", error_description="${description}"`,
+        },
+      },
+    );
+  }
+
+  // ------------------------------------------------------------ permissions
+
+  /**
+   * The permission check every surface runs before a handler (ADR 0005): is
+   * the tool granted, and if it needs confirmation, has the customer approved
+   * this exact call?
+   */
+  async function checkCall(request: Request, principal: Principal, tool: AnyUsherTool, input: unknown): Promise<CallDecision> {
+    const scope = toolScope(tool.name);
+    if (!principal.scopes.includes(scope)) return { kind: "forbidden", scope };
+    if (!needsConfirmation(tool)) return { kind: "allow" };
+
+    const canonical = canonicalJson(input);
+    const inputHash = await sha256(canonical);
+    const at = now();
+    const existing = await store.findConfirmation(principal.grantId, tool.name, inputHash, at);
+    if (existing?.status === "approved") {
+      // Single use: of two concurrent retries, exactly one runs.
+      if (await store.consumeConfirmation(existing.id)) return { kind: "allow" };
+    } else if (existing?.status === "denied") {
+      await store.consumeConfirmation(existing.id);
+      return { kind: "declined" };
+    } else if (existing) {
+      return { kind: "confirm", url: urls(request).confirm + existing.id, summary: existing.summary };
+    }
+
+    const summary = typeof tool.confirm === "function" ? String(tool.confirm(input)) : (tool.title ?? tool.name);
+    const pretty = JSON.stringify(JSON.parse(canonical), null, 2);
+    const confirmation: ConfirmationRecord = {
+      id: randomToken("usher_cf_"),
+      grantId: principal.grantId,
+      userId: principal.user.id,
+      clientName: principal.agent.name,
+      tool: tool.name,
+      inputHash,
+      summary: summary.slice(0, 200),
+      details: pretty.length > MAX_DETAILS ? `${pretty.slice(0, MAX_DETAILS)}\n…` : pretty,
+      status: "pending",
+      createdAt: at,
+      expiresAt: at + CONFIRM_TTL,
+    };
+    await store.saveConfirmation(confirmation);
+    return { kind: "confirm", url: urls(request).confirm + confirmation.id, summary: confirmation.summary };
+  }
+
+  /** Loads a confirmation the signed-in customer may decide on, or the page explaining why not. */
+  async function confirmationFor(id: string, user: UsherUser | null, request: Request) {
+    const confirmation = await store.getConfirmation(id);
+    if (!confirmation || confirmation.expiresAt < now()) {
+      return errorPage("This approval link has expired or was already used. Ask your agent to try again.", 404, "Nothing to approve");
+    }
+    if (!user) return redirect(identity.loginUrl(request.url));
+    if (user.id !== confirmation.userId) return errorPage("This approval belongs to a different account.", 403, "Wrong account");
+    const grant = await store.getGrant(confirmation.grantId);
+    if (!grant || grant.revokedAt) return errorPage("This agent was disconnected, so it can't take this action.", 410, "Agent disconnected");
+    const tool = toolsByName.get(confirmation.tool);
+    if (!tool) return errorPage("This action is no longer available.", 410, "Nothing to approve");
+    if (confirmation.status !== "pending") {
+      return done(confirmation.status === "approved" ? "Already approved" : "Already declined", "You can close this page and go back to your agent.");
+    }
+    return { confirmation, grant, tool, user };
+  }
+
+  async function showConfirmation(request: Request, u: Urls, id: string): Promise<Response> {
+    const found = await confirmationFor(id, await identity.getUser(request), request);
+    if (found instanceof Response) return found;
+    const confirmToken = await signPayload(secret, {
+      k: "confirm",
+      id,
+      u: found.user.id,
+      exp: now() + CONSENT_TTL,
+    } satisfies ConfirmPayload);
+    return new Response(
+      renderConfirmPage({
+        appName,
+        confirmation: found.confirmation,
+        tool: found.tool,
+        verified: found.grant.clientSource === "cimd",
+        user: found.user,
+        action: u.confirm + id,
+        confirmToken,
+      }),
+      { headers: PAGE_HEADERS },
+    );
+  }
+
+  async function decideConfirmation(request: Request, u: Urls, id: string): Promise<Response> {
+    // Same CSRF defenses as the consent form: same origin + a signed, user-bound token.
+    const origin = request.headers.get("origin");
+    if (origin !== null && origin !== u.origin) return errorPage("Request blocked.", 403, "Request blocked");
+    const form = new URLSearchParams(await request.text());
+    const token = await verifyPayload<ConfirmPayload>(secret, form.get("confirm_token") ?? "");
+    if (!token || token.k !== "confirm" || token.id !== id || token.exp < now()) {
+      return errorPage("This approval page has expired. Ask your agent to try again.", 400, "Page expired");
+    }
+    const user = await identity.getUser(request);
+    if (!user || user.id !== token.u) return errorPage("You're signed in as a different user.", 403, "Wrong account");
+    const found = await confirmationFor(id, user, request);
+    if (found instanceof Response) return found;
+
+    const approve = form.get("decision") === "allow";
+    await store.decideConfirmation(id, approve ? "approved" : "denied", now());
+    const agent = found.confirmation.clientName;
+    return approve
+      ? done("Approved", `Go back to ${agent}. It can now finish: ${found.confirmation.summary}.`)
+      : done("Declined", `${agent} won't do this. You can close this page.`);
+  }
+
+  function done(heading: string, message: string): Response {
+    return new Response(renderDonePage(appName, heading, message), { headers: PAGE_HEADERS });
   }
 
   function unauthorized(u: Urls, invalidToken = false): Response {
@@ -384,6 +584,14 @@ export function createAuthServer(options: AuthServerOptions) {
       pathname === `/.well-known/oauth-protected-resource${basePath}/mcp` ||
       pathname === "/.well-known/oauth-protected-resource" ||
       pathname === `/.well-known/oauth-authorization-server${basePath}`;
+
+    const confirmPrefix = `${basePath}/confirm/`;
+    if (pathname.startsWith(confirmPrefix)) {
+      const id = pathname.slice(confirmPrefix.length);
+      if (method === "GET") return showConfirmation(request, u, id);
+      if (method === "POST") return decideConfirmation(request, u, id);
+      return methodNotAllowed();
+    }
     const isApi = [`${basePath}/oauth/token`, `${basePath}/oauth/register`, `${basePath}/oauth/revoke`].includes(pathname);
 
     // Browser-based agents call metadata and token endpoints cross-origin. They carry no cookies.
@@ -418,13 +626,15 @@ export function createAuthServer(options: AuthServerOptions) {
     }
   }
 
-  function errorPage(message: string, status = 400): Response {
-    return new Response(renderErrorPage(appName, message), { status, headers: PAGE_HEADERS });
+  function errorPage(message: string, status = 400, heading?: string): Response {
+    return new Response(renderErrorPage(appName, message, heading), { status, headers: PAGE_HEADERS });
   }
 
   return {
     route,
     authenticate,
+    insufficientScope,
+    checkCall,
     grants: {
       /** Agents the user has connected (for a "Connected agents" settings page). */
       list: async (userId: string) => (await store.listGrants(userId)).filter((g) => !g.revokedAt),
@@ -432,6 +642,15 @@ export function createAuthServer(options: AuthServerOptions) {
       revoke: async (userId: string, grantId: string) => {
         const grant = await store.getGrant(grantId);
         if (grant && grant.userId === userId) await store.revokeGrant(grantId, now());
+      },
+      /** Changes which tools a connected agent may use. Applies on its next call. */
+      setScopes: async (userId: string, grantId: string, scopes: string[]) => {
+        const unknown = scopes.filter((s) => !toolsByScope.has(s));
+        if (unknown.length > 0) throw new Error(`[usher] Unknown scopes: ${unknown.join(", ")}`);
+        const grant = await store.getGrant(grantId);
+        if (grant && grant.userId === userId && !grant.revokedAt) {
+          await store.updateGrantScopes(grantId, [...new Set(scopes)]);
+        }
       },
     },
   };
@@ -462,6 +681,15 @@ function redirectTo(base: string, params: Record<string, string | undefined>): R
   const url = new URL(base);
   for (const [key, value] of Object.entries(params)) if (value !== undefined) url.searchParams.set(key, value);
   return redirect(url.toString());
+}
+
+/** Key-sorted JSON, so the same arguments always hash the same. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value ?? null, (_key, v: unknown) =>
+    v !== null && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
 }
 
 function methodNotAllowed(): Response {

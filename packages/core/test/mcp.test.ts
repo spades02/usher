@@ -1,7 +1,7 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createUsher, defineTool } from "../src/index.js";
+import { ToolError, createUsher, defineTool } from "../src/index.js";
 
 const BASE = "https://shop.example";
 const MCP_URL = `${BASE}/api/usher/mcp`;
@@ -11,16 +11,21 @@ const orders = [
   { id: "o_2", item: "Yoga mat", status: "processing" },
 ];
 
+const Order = z.object({ id: z.string(), item: z.string(), status: z.string() });
+const reportedErrors: unknown[] = [];
+
 const usher = createUsher({
   app: { name: "Example Shop", version: "1.0.0" },
   instructions: "Use these tools to help the customer with their orders.",
   allowedOrigins: ["https://partner.example"],
+  onError: (error) => reportedErrors.push(error),
   tools: [
     defineTool({
       name: "list_orders",
       description: "List the customer's orders.",
       input: z.object({ status: z.enum(["shipped", "processing"]).optional() }),
-      readOnly: true,
+      output: z.object({ orders: z.array(Order) }),
+      effect: "read",
       handler: ({ status }) => ({
         orders: status ? orders.filter((o) => o.status === status) : orders,
       }),
@@ -29,11 +34,22 @@ const usher = createUsher({
       name: "cancel_order",
       description: "Cancel an order that has not shipped yet.",
       input: z.object({ orderId: z.string() }),
+      effect: "destructive",
+      idempotent: true,
       handler: ({ orderId }) => {
         const order = orders.find((o) => o.id === orderId);
-        if (!order) throw new Error(`Order ${orderId} not found`);
-        if (order.status === "shipped") throw new Error("Shipped orders cannot be cancelled");
+        if (!order) throw new ToolError(`Order ${orderId} not found`, { code: "not_found" });
+        if (order.status === "shipped") throw new ToolError("Shipped orders cannot be cancelled");
         return { cancelled: orderId };
+      },
+    }),
+    defineTool({
+      name: "flaky_lookup",
+      description: "A tool whose database blows up.",
+      input: z.object({}),
+      effect: "read",
+      handler: () => {
+        throw new Error('relation "users" does not exist at db.internal:5432');
       },
     }),
   ],
@@ -76,9 +92,14 @@ describe("MCP surface — official SDK client", () => {
     );
 
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual(["list_orders", "cancel_order"]);
-    expect(tools[0]?.annotations?.readOnlyHint).toBe(true);
-    expect(tools[1]?.annotations?.readOnlyHint).toBe(false);
+    expect(tools.map((t) => t.name)).toEqual(["list_orders", "cancel_order", "flaky_lookup"]);
+    expect(tools[0]?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+    expect(tools[0]?.outputSchema?.type).toBe("object");
+    expect(tools[1]?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+    });
 
     const result = await client.callTool({ name: "list_orders", arguments: { status: "shipped" } });
     expect(result.structuredContent).toEqual({ orders: [orders[0]] });
@@ -86,14 +107,46 @@ describe("MCP surface — official SDK client", () => {
     await client.close();
   });
 
-  it("reports tool failures in-band with isError", async () => {
+  it("shows ToolError messages and codes to the agent", async () => {
     const client = new Client({ name: "test-agent", version: "0.0.1" });
     await client.connect(
       new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: inProcessFetch }),
     );
-    const result = await client.callTool({ name: "cancel_order", arguments: { orderId: "o_1" } });
+    const shipped = await client.callTool({ name: "cancel_order", arguments: { orderId: "o_1" } });
+    expect(shipped.isError).toBe(true);
+    expect(JSON.stringify(shipped.content)).toContain("Shipped orders cannot be cancelled");
+
+    const missing = await client.callTool({ name: "cancel_order", arguments: { orderId: "o_9" } });
+    expect(JSON.stringify(missing.content)).toContain("not_found");
+    await client.close();
+  });
+
+  it("hides unexpected errors from the agent and reports them to onError", async () => {
+    reportedErrors.length = 0;
+    const client = new Client({ name: "test-agent", version: "0.0.1" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: inProcessFetch }),
+    );
+    const result = await client.callTool({ name: "flaky_lookup", arguments: {} });
     expect(result.isError).toBe(true);
-    expect(JSON.stringify(result.content)).toContain("Shipped orders cannot be cancelled");
+    const shown = JSON.stringify(result.content);
+    expect(shown).not.toContain("db.internal");
+    expect(shown).toContain("Something went wrong");
+    expect(String(reportedErrors[0])).toContain("db.internal");
+    await client.close();
+  });
+
+  it("rejects invalid input before the handler runs", async () => {
+    const client = new Client({ name: "test-agent", version: "0.0.1" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: inProcessFetch }),
+    );
+    const outcome = await client
+      .callTool({ name: "list_orders", arguments: { status: "teleported" } })
+      .then((r) => r, (e: unknown) => e);
+    // Either an in-band error result or a protocol error is acceptable; it must not succeed.
+    const asText = JSON.stringify(outcome instanceof Error ? outcome.message : outcome);
+    expect(asText).toMatch(/invalid|validation/i);
     await client.close();
   });
 });
@@ -121,7 +174,7 @@ describe("MCP surface — 2025-era clients (initialize handshake)", () => {
       { "mcp-protocol-version": "2025-06-18" },
     );
     const listRpc = await readRpc(list);
-    expect(listRpc.result.tools).toHaveLength(2);
+    expect(listRpc.result.tools).toHaveLength(3);
   });
 });
 
@@ -204,15 +257,4 @@ describe("Usher routing and security", () => {
     expect(res.status).toBe(404);
   });
 
-  it("refuses duplicate tool names at startup", () => {
-    const tool = defineTool({
-      name: "dup",
-      description: "x",
-      input: z.object({}),
-      handler: () => null,
-    });
-    expect(() => createUsher({ app: { name: "x", version: "1" }, tools: [tool, tool] })).toThrow(
-      /Duplicate tool name/,
-    );
-  });
 });

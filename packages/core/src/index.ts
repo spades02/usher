@@ -1,12 +1,20 @@
 import { isOriginAllowed } from "./origin.js";
 import { createMcpSurface } from "./surfaces/mcp.js";
-import { assertValidTools, type UsherTool } from "./tool.js";
+import { assertValidTools, type AnyUsherTool } from "./tool.js";
 
-export { defineTool, type ToolContext, type UsherTool } from "./tool.js";
+export { ToolError } from "./errors.js";
+export type { InferInput, InferOutput, UsherSchema } from "./schema.js";
+export {
+  defineTool,
+  type AnyUsherTool,
+  type ToolContext,
+  type ToolEffect,
+  type UsherTool,
+} from "./tool.js";
 
 export interface UsherOptions {
   /** The actions agents may perform in your app. */
-  tools: readonly UsherTool[];
+  tools: readonly AnyUsherTool[];
   /** Your app's name and version, reported to agents. */
   app: { name: string; version: string };
   /** Guidance for agents on how to use your tools. */
@@ -15,6 +23,11 @@ export interface UsherOptions {
   basePath?: string;
   /** Extra browser origins allowed to call Usher (your own origin always is). */
   allowedOrigins?: readonly string[];
+  /**
+   * Called with unexpected errors thrown by tool handlers. The agent only sees
+   * a generic message. Default: `console.error`.
+   */
+  onError?: (error: unknown, info: { tool: string }) => void;
 }
 
 export interface Usher {
@@ -35,6 +48,9 @@ export function createUsher(options: UsherOptions): Usher {
     tools: options.tools,
     serverInfo: options.app,
     instructions: options.instructions,
+    onError:
+      options.onError ??
+      ((error, { tool }) => console.error(`[usher] Tool "${tool}" failed:`, error)),
   });
 
   return {

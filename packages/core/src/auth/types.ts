@@ -26,15 +26,3 @@ export interface Principal {
   scopes: string[];
 }
 
-/**
- * The permission layer's verdict on one tool call (ADR 0005). Surfaces turn
- * it into their protocol's shape.
- */
-export type CallDecision =
-  | { kind: "allow" }
-  /** The customer didn't grant this tool. `scope` is what to ask for. */
-  | { kind: "forbidden"; scope: string }
-  /** The customer must approve this exact call at `url` first. */
-  | { kind: "confirm"; url: string; summary: string }
-  /** The customer looked at this call and said no. */
-  | { kind: "declined" };

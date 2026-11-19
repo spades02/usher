@@ -12,9 +12,11 @@ import {
   renderDonePage,
   renderErrorPage,
 } from "./consent-page.js";
-import { randomToken, sha256, signPayload, verifyPayload, verifyPkce } from "./crypto.js";
+import { canonicalJson, randomToken, sha256, signPayload, verifyPayload, verifyPkce } from "./crypto.js";
 import type { AuthStore, ClientRecord, ConfirmationRecord, GrantRecord } from "./store.js";
-import type { CallDecision, IdentityAdapter, Principal, UsherUser } from "./types.js";
+import type { ConfirmationVerdict } from "../pipeline.js";
+import type { UsherEvent } from "../plugins/types.js";
+import type { IdentityAdapter, Principal, UsherUser } from "./types.js";
 
 export interface AuthServerOptions {
   appName: string;
@@ -29,6 +31,8 @@ export interface AuthServerOptions {
   refreshTokenTtl: number;
   dynamicClientRegistration: boolean;
   fetchClientMetadata: MetadataFetch;
+  /** Delivers grant and confirmation events to plugins (ADR 0006). */
+  emit: (event: UsherEvent) => Promise<void>;
 }
 
 const CODE_TTL = 60;
@@ -67,6 +71,26 @@ export function createAuthServer(options: AuthServerOptions) {
   const toolsByScope = new Map(tools.map((t) => [toolScope(t.name), t]));
   const toolsByName = new Map(tools.map((t) => [t.name, t]));
   const allScopes = [...toolsByScope.keys()];
+
+  const agentOf = (grant: GrantRecord) => ({
+    clientId: grant.clientId,
+    name: grant.clientName,
+    verified: grant.clientSource === "cimd",
+  });
+  const grantEvent = (grant: GrantRecord) => ({ at: Date.now(), userId: grant.userId, agent: agentOf(grant), grantId: grant.id });
+
+  /** The only way grants are revoked, so every revocation is recorded. */
+  async function revokeGrant(grantId: string, reason: "customer" | "agent" | "token_replay") {
+    const grant = await store.getGrant(grantId);
+    if (!grant || grant.revokedAt) return;
+    await store.revokeGrant(grantId, now());
+    await options.emit({ type: "grant.revoked", ...grantEvent(grant), reason });
+  }
+
+  async function setGrantScopes(grant: GrantRecord, scopes: string[]) {
+    await store.updateGrantScopes(grant.id, scopes);
+    await options.emit({ type: "grant.updated", ...grantEvent(grant), scopes });
+  }
 
   /**
    * Reads the OAuth `scope` parameter. Unknown scopes (`openid`,
@@ -243,7 +267,7 @@ export function createAuthServer(options: AuthServerOptions) {
     const existing = await store.findActiveGrant(user.id, client.clientId);
     let grant: GrantRecord;
     if (existing) {
-      await store.updateGrantScopes(existing.id, approved);
+      await setGrantScopes(existing, approved);
       grant = { ...existing, scopes: approved };
     } else {
       grant = await createGrant(user, client, approved);
@@ -262,6 +286,7 @@ export function createAuthServer(options: AuthServerOptions) {
       createdAt: now(),
     };
     await store.saveGrant(grant);
+    await options.emit({ type: "grant.created", ...grantEvent(grant), scopes });
     return grant;
   }
 
@@ -303,7 +328,7 @@ export function createAuthServer(options: AuthServerOptions) {
         const code = consumed.record;
         if (!consumed.firstUse) {
           // A replayed code means it leaked. Kill everything issued from it (RFC 6749 §4.1.2).
-          await store.revokeGrant(code.grantId, now());
+          await revokeGrant(code.grantId, "token_replay");
           return oauthError("invalid_grant", "Authorization code was already used");
         }
         if (code.expiresAt < now()) return oauthError("invalid_grant", "Authorization code expired");
@@ -323,7 +348,7 @@ export function createAuthServer(options: AuthServerOptions) {
         const refresh = consumed.record;
         if (!consumed.firstUse) {
           // Rotation reuse detection (OAuth 2.1 §4.3.1): someone has a stolen copy.
-          await store.revokeGrant(refresh.grantId, now());
+          await revokeGrant(refresh.grantId, "token_replay");
           return oauthError("invalid_grant", "Refresh token was already used");
         }
         if (refresh.expiresAt < now()) return oauthError("invalid_grant", "Refresh token expired");
@@ -402,7 +427,7 @@ export function createAuthServer(options: AuthServerOptions) {
     const form = new URLSearchParams(await request.text());
     const record = await store.getToken(await sha256(form.get("token") ?? ""));
     // RFC 7009: revoking either token ends the whole grant; always answer 200.
-    if (record && record.clientId === form.get("client_id")) await store.revokeGrant(record.grantId, now());
+    if (record && record.clientId === form.get("client_id")) await revokeGrant(record.grantId, "agent");
     return new Response(null, { status: 200, headers: CORS });
   }
 
@@ -454,13 +479,15 @@ export function createAuthServer(options: AuthServerOptions) {
   // ------------------------------------------------------------ permissions
 
   /**
-   * The permission check every surface runs before a handler (ADR 0005): is
-   * the tool granted, and if it needs confirmation, has the customer approved
-   * this exact call?
+   * The confirmation gate (ADR 0005): if the tool needs it, has the customer
+   * approved this exact call? Scopes are checked earlier, by the pipeline.
    */
-  async function checkCall(request: Request, principal: Principal, tool: AnyUsherTool, input: unknown): Promise<CallDecision> {
-    const scope = toolScope(tool.name);
-    if (!principal.scopes.includes(scope)) return { kind: "forbidden", scope };
+  async function confirmationGate(
+    request: Request,
+    principal: Principal,
+    tool: AnyUsherTool,
+    input: unknown,
+  ): Promise<ConfirmationVerdict> {
     if (!needsConfirmation(tool)) return { kind: "allow" };
 
     const canonical = canonicalJson(input);
@@ -552,7 +579,15 @@ export function createAuthServer(options: AuthServerOptions) {
     if (found instanceof Response) return found;
 
     const approve = form.get("decision") === "allow";
-    await store.decideConfirmation(id, approve ? "approved" : "denied", now());
+    if (await store.decideConfirmation(id, approve ? "approved" : "denied", now())) {
+      await options.emit({
+        type: "confirmation.decided",
+        ...grantEvent(found.grant),
+        tool: found.confirmation.tool,
+        summary: found.confirmation.summary,
+        approved: approve,
+      });
+    }
     const agent = found.confirmation.clientName;
     return approve
       ? done("Approved", `Go back to ${agent}. It can now finish: ${found.confirmation.summary}.`)
@@ -634,23 +669,21 @@ export function createAuthServer(options: AuthServerOptions) {
     route,
     authenticate,
     insufficientScope,
-    checkCall,
+    confirmationGate,
     grants: {
       /** Agents the user has connected (for a "Connected agents" settings page). */
       list: async (userId: string) => (await store.listGrants(userId)).filter((g) => !g.revokedAt),
       /** Disconnects an agent immediately. Every token issued under the grant stops working. */
       revoke: async (userId: string, grantId: string) => {
         const grant = await store.getGrant(grantId);
-        if (grant && grant.userId === userId) await store.revokeGrant(grantId, now());
+        if (grant && grant.userId === userId) await revokeGrant(grantId, "customer");
       },
       /** Changes which tools a connected agent may use. Applies on its next call. */
       setScopes: async (userId: string, grantId: string, scopes: string[]) => {
         const unknown = scopes.filter((s) => !toolsByScope.has(s));
         if (unknown.length > 0) throw new Error(`[usher] Unknown scopes: ${unknown.join(", ")}`);
         const grant = await store.getGrant(grantId);
-        if (grant && grant.userId === userId && !grant.revokedAt) {
-          await store.updateGrantScopes(grantId, [...new Set(scopes)]);
-        }
+        if (grant && grant.userId === userId && !grant.revokedAt) await setGrantScopes(grant, [...new Set(scopes)]);
       },
     },
   };
@@ -681,15 +714,6 @@ function redirectTo(base: string, params: Record<string, string | undefined>): R
   const url = new URL(base);
   for (const [key, value] of Object.entries(params)) if (value !== undefined) url.searchParams.set(key, value);
   return redirect(url.toString());
-}
-
-/** Key-sorted JSON, so the same arguments always hash the same. */
-function canonicalJson(value: unknown): string {
-  return JSON.stringify(value ?? null, (_key, v: unknown) =>
-    v !== null && typeof v === "object" && !Array.isArray(v)
-      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
-      : v,
-  );
 }
 
 function methodNotAllowed(): Response {

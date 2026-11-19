@@ -4,8 +4,9 @@ import {
   createMcpHandler,
   inputRequired,
 } from "@modelcontextprotocol/server";
-import type { CallDecision, Principal } from "../auth/types.js";
-import { GENERIC_TOOL_FAILURE, ToolError } from "../errors.js";
+import type { Principal } from "../auth/types.js";
+import { GENERIC_TOOL_FAILURE } from "../errors.js";
+import type { CallResult } from "../pipeline.js";
 import type { AnyUsherTool, ToolEffect } from "../tool.js";
 
 export interface McpSurfaceOptions {
@@ -13,10 +14,8 @@ export interface McpSurfaceOptions {
   serverInfo: { name: string; version: string };
   /** Optional guidance for the agent on how to use this app's tools. */
   instructions?: string;
-  /** Receives unexpected tool errors (never shown to the agent). */
-  onError: (error: unknown, info: { tool: string }) => void;
-  /** The permission layer (ADR 0005). Runs before every handler; only `allow` lets it run. */
-  policy: (request: Request, principal: Principal, tool: AnyUsherTool, input: unknown) => Promise<CallDecision>;
+  /** The protocol-neutral call pipeline (ADR 0006): permissions, plugins, confirmation, handler. */
+  run: (request: Request, principal: Principal, tool: AnyUsherTool, input: unknown, signal: AbortSignal) => Promise<CallResult>;
 }
 
 /** Key of Usher's URL elicitation inside an MCP input-required round. */
@@ -32,7 +31,7 @@ const CONFIRM_KEY = "usher_confirm";
  * principal to `fetch`.
  */
 export function createMcpSurface(options: McpSurfaceOptions) {
-  const { tools, serverInfo, instructions, onError, policy } = options;
+  const { tools, serverInfo, instructions, run } = options;
 
   const handler = createMcpHandler(
     ({ era, requestInfo, authInfo }) => {
@@ -53,36 +52,13 @@ export function createMcpSurface(options: McpSurfaceOptions) {
           async (args: unknown, ctx) => {
             // Defense in depth: the router never dispatches unauthenticated calls.
             if (!requestInfo || !principal) throw new Error("[usher] Unauthenticated tool call");
-            try {
-              const decision = await policy(requestInfo, principal, tool, args);
-              if (decision.kind !== "allow") {
-                const envelope = ctx.mcpReq.envelope as Record<string, any> | undefined;
-                const supportsUrlElicitation =
-                  era === "modern" && envelope?.[CLIENT_CAPABILITIES_META_KEY]?.elicitation?.url !== undefined;
-                const retried = ctx.mcpReq.inputResponses?.[CONFIRM_KEY] !== undefined;
-                return blocked(decision, supportsUrlElicitation && !retried);
-              }
-              const result = await tool.handler(args, {
-                user: principal.user,
-                agent: principal.agent,
-                request: requestInfo,
-                signal: ctx.mcpReq.signal,
-              });
-              return toCallToolResult(result);
-            } catch (error) {
-              if (error instanceof ToolError) {
-                const payload = { error: error.message, ...(error.code ? { code: error.code } : {}) };
-                return {
-                  isError: true,
-                  content: [{ type: "text" as const, text: JSON.stringify(payload) }],
-                };
-              }
-              onError(error, { tool: tool.name });
-              return {
-                isError: true,
-                content: [{ type: "text" as const, text: GENERIC_TOOL_FAILURE }],
-              };
-            }
+            const result = await run(requestInfo, principal, tool, args, ctx.mcpReq.signal);
+            if (result.kind === "ok") return toCallToolResult(result.value);
+            const envelope = ctx.mcpReq.envelope as Record<string, any> | undefined;
+            const supportsUrlElicitation =
+              era === "modern" && envelope?.[CLIENT_CAPABILITIES_META_KEY]?.elicitation?.url !== undefined;
+            const retried = ctx.mcpReq.inputResponses?.[CONFIRM_KEY] !== undefined;
+            return toErrorResult(result, supportsUrlElicitation && !retried);
           },
         );
       }
@@ -101,19 +77,29 @@ export function createMcpSurface(options: McpSurfaceOptions) {
 }
 
 /**
- * Turns a non-allow decision into what the agent sees.
+ * Turns every non-success result into what the agent sees.
  *
  * Confirmation is out-of-band: the customer approves on the app's own site,
  * never inside the agent. Clients that declare URL elicitation (2026-07-28)
  * get a native "open this link" prompt and retry by themselves. Everyone else
  * gets a tool error with the link, which the model relays to the customer.
  */
-function blocked(decision: Exclude<CallDecision, { kind: "allow" }>, useElicitation: boolean) {
-  const error = (payload: Record<string, string>) => ({
+function toErrorResult(decision: Exclude<CallResult, { kind: "ok" }>, useElicitation: boolean) {
+  const error = (payload: Record<string, string | number>) => ({
     isError: true,
     content: [{ type: "text" as const, text: JSON.stringify(payload) }],
   });
   switch (decision.kind) {
+    case "tool_error":
+      return error({ error: decision.message, ...(decision.code ? { code: decision.code } : {}) });
+    case "failed":
+      return { isError: true, content: [{ type: "text" as const, text: GENERIC_TOOL_FAILURE }] };
+    case "denied":
+      return error({
+        error: decision.message,
+        code: decision.code,
+        ...(decision.retryAfterSeconds !== undefined ? { retry_after_seconds: decision.retryAfterSeconds } : {}),
+      });
     case "forbidden":
       return error({ error: "The customer hasn't allowed this agent to use this tool.", code: "insufficient_scope", scope: decision.scope });
     case "declined":

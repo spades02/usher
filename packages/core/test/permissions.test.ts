@@ -11,7 +11,11 @@ import {
   authorizeAgent,
   connectAgent,
   consentInBrowser,
+  callTool,
   consentScopes,
+  decideInBrowser,
+  errorPayload,
+  readRpc,
 } from "./helpers.js";
 
 // ------------------------------------------------------------------ fixtures
@@ -74,82 +78,6 @@ function makeShop() {
 
 // In consent-page order: grouped by effect (read, write, destructive).
 const ALL = ["list_orders", "update_address", "refund", "cancel_order", "clear_cart"].map(toolScope);
-
-/** A raw 2026-07-28 tools/call, so tests can see HTTP statuses and headers. */
-function callTool(
-  usher: Usher,
-  token: string,
-  name: string,
-  args: Record<string, unknown>,
-  extra: { capabilities?: Record<string, unknown>; params?: Record<string, unknown> } = {},
-) {
-  return usher.handler(
-    new Request(MCP_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json, text/event-stream",
-        authorization: `Bearer ${token}`,
-        "mcp-protocol-version": "2026-07-28",
-        "mcp-method": "tools/call",
-        "mcp-name": name,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          _meta: {
-            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-            "io.modelcontextprotocol/clientCapabilities": extra.capabilities ?? {},
-            "io.modelcontextprotocol/clientInfo": { name: "raw-agent", version: "1.0.0" },
-          },
-          name,
-          arguments: args,
-          ...extra.params,
-        },
-      }),
-    }),
-  );
-}
-
-async function readRpc(res: Response): Promise<any> {
-  const body = await res.text();
-  if (!res.headers.get("content-type")?.includes("text/event-stream")) return JSON.parse(body);
-  return body
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => JSON.parse(line.slice(5)))
-    .find((m) => "result" in m || "error" in m);
-}
-
-/** The tool error payload Usher puts in a result's text content. */
-function errorPayload(rpc: any) {
-  expect(rpc.result.isError).toBe(true);
-  return JSON.parse(rpc.result.content[0].text);
-}
-
-/** Plays the customer on the approval page. */
-async function decideInBrowser(
-  usher: Usher,
-  url: string,
-  { userId = "user_1", decision = "allow" }: { userId?: string; decision?: "allow" | "deny" } = {},
-) {
-  const cookie = `session=${userId}`;
-  const page = await usher.handler(new Request(url, { headers: { cookie } }));
-  expect(page.status).toBe(200);
-  const html = await page.text();
-  const confirmToken = html.match(/name="confirm_token" value="([^"]+)"/)?.[1];
-  expect(confirmToken).toBeTruthy();
-  const res = await usher.handler(
-    new Request(url, {
-      method: "POST",
-      headers: { cookie, origin: BASE, "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ confirm_token: confirmToken!, decision }),
-    }),
-  );
-  return { html, res, confirmToken: confirmToken! };
-}
 
 function authorizeUrl(params: Record<string, string>) {
   const url = new URL(`${BASE}/api/usher/oauth/authorize`);

@@ -47,7 +47,7 @@ Pre-alpha. Built phase by phase; each phase records one architectural decision i
 | 2 | Tool definition model | [0003](docs/adr/0003-tool-definition-model.md) |
 | 3 | Agent auth & consent | [0004](docs/adr/0004-agent-auth-and-consent.md) |
 | 4 | Permission model | [0005](docs/adr/0005-permission-model.md) |
-| 5 | Plugin system | — |
+| 5 | Plugin system | [0006](docs/adr/0006-plugin-system.md) |
 | 6 | Persistence | — |
 | 7 | Runtime & deployment | — |
 | 8 | Customer-facing UI | — |

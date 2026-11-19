@@ -79,3 +79,12 @@ export async function verifyPayload<T>(secret: string, token: string): Promise<T
     return null;
   }
 }
+
+/** Key-sorted JSON, so the same arguments always hash the same. */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(value ?? null, (_key, v: unknown) =>
+    v !== null && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}

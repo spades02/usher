@@ -2,6 +2,8 @@ import { createAuthServer } from "./auth/server.js";
 import { memoryStore, type AuthStore, type GrantRecord } from "./auth/store.js";
 import type { IdentityAdapter, Principal } from "./auth/types.js";
 import { isOriginAllowed } from "./origin.js";
+import { createCallPipeline } from "./pipeline.js";
+import { assertValidPlugins, type UsherPlugin } from "./plugins/types.js";
 import { createMcpSurface } from "./surfaces/mcp.js";
 import { assertValidTools, toolScope, type AnyUsherTool } from "./tool.js";
 
@@ -15,8 +17,34 @@ export type {
   GrantRecord,
   TokenRecord,
 } from "./auth/store.js";
-export type { CallDecision, IdentityAdapter, Principal, UsherUser } from "./auth/types.js";
+export type { IdentityAdapter, Principal, UsherUser } from "./auth/types.js";
 export { ToolError } from "./errors.js";
+export type { CallResult } from "./pipeline.js";
+export {
+  auditLog,
+  memoryAuditSink,
+  type AuditLogOptions,
+  type AuditQuery,
+  type AuditSink,
+  type MemoryAuditSink,
+} from "./plugins/audit-log.js";
+export { killSwitch, type KillSwitchOptions } from "./plugins/kill-switch.js";
+export {
+  memoryRateLimitStore,
+  rateLimit,
+  type RateLimitOptions,
+  type RateLimitStore,
+  type RateLimitRule,
+} from "./plugins/rate-limit.js";
+export {
+  definePlugin,
+  type AgentInfo,
+  type CallInfo,
+  type CallOutcome,
+  type PluginDenial,
+  type UsherEvent,
+  type UsherPlugin,
+} from "./plugins/types.js";
 export type { InferInput, InferOutput, UsherSchema } from "./schema.js";
 export {
   defineTool,
@@ -51,10 +79,16 @@ export interface UsherOptions {
   /** Extra browser origins allowed to call the MCP endpoint (your own origin always is). */
   allowedOrigins?: readonly string[];
   /**
-   * Called with unexpected errors thrown by tool handlers. The agent only sees
-   * a generic message. Default: `console.error`.
+   * Extensions that run at fixed points of every call: audit logs, rate
+   * limits, kill switches, or your own (ADR 0006). Order matters: the first
+   * plugin to deny a call wins.
    */
-  onError?: (error: unknown, info: { tool: string }) => void;
+  plugins?: readonly UsherPlugin[];
+  /**
+   * Called with unexpected errors from tool handlers (`tool`) and plugins
+   * (`plugin`). The agent only sees a generic message. Default: `console.error`.
+   */
+  onError?: (error: unknown, info: { tool?: string; plugin?: string }) => void;
   auth?: {
     /** Access token lifetime in seconds. Default: 3600 (1 hour). */
     accessTokenTtl?: number;
@@ -88,6 +122,8 @@ export function createUsher(options: UsherOptions): Usher {
   const allowedOrigins = options.allowedOrigins ?? [];
 
   assertValidTools(options.tools);
+  const plugins = options.plugins ?? [];
+  assertValidPlugins(plugins);
   if (typeof options.secret !== "string" || options.secret.length < 32) {
     throw new Error("[usher] `secret` must be at least 32 characters. Generate one with `openssl rand -base64 32`");
   }
@@ -99,7 +135,21 @@ export function createUsher(options: UsherOptions): Usher {
     console.warn("[usher] Using the in-memory store in production: connected agents are lost on restart.");
   }
 
+  const onError =
+    options.onError ??
+    ((error: unknown, { tool, plugin }: { tool?: string; plugin?: string }) =>
+      console.error(`[usher] ${plugin ? `Plugin "${plugin}"` : `Tool "${tool}"`} failed:`, error));
+
+  // The pipeline needs the auth server's confirmation gate, and the auth
+  // server needs the pipeline's event bus, so the gate is bound lazily.
+  const pipeline = createCallPipeline({
+    plugins,
+    onError,
+    confirmationGate: (...args) => auth.confirmationGate(...args),
+  });
+
   const auth = createAuthServer({
+    emit: pipeline.emit,
     appName: options.app.name,
     basePath,
     baseUrl: options.baseUrl,
@@ -117,19 +167,16 @@ export function createUsher(options: UsherOptions): Usher {
     tools: options.tools,
     serverInfo: options.app,
     instructions: options.instructions,
-    onError:
-      options.onError ??
-      ((error, { tool }) => console.error(`[usher] Tool "${tool}" failed:`, error)),
-    policy: auth.checkCall,
+    run: pipeline.run,
   });
-  const toolNames = new Set(options.tools.map((t) => t.name));
+  const toolsByName = new Map(options.tools.map((t) => [t.name, t]));
 
   /**
    * Finds a tools/call for a tool the customer hasn't granted, before the
    * MCP layer runs, so the agent gets an HTTP 403 `insufficient_scope` it
    * can answer by asking the customer (MCP step-up authorization).
    */
-  async function missingScope(request: Request, principal: Principal): Promise<string | null> {
+  async function missingScope(request: Request, principal: Principal) {
     if (request.method !== "POST") return null;
     let body: unknown;
     try {
@@ -140,7 +187,10 @@ export function createUsher(options: UsherOptions): Usher {
     for (const message of Array.isArray(body) ? body : [body]) {
       const name = (message as { method?: unknown; params?: { name?: unknown } } | null)?.params?.name;
       if ((message as { method?: unknown } | null)?.method !== "tools/call" || typeof name !== "string") continue;
-      if (toolNames.has(name) && !principal.scopes.includes(toolScope(name))) return toolScope(name);
+      const tool = toolsByName.get(name);
+      if (tool && !principal.scopes.includes(toolScope(name))) {
+        return { tool, input: (message as { params?: { arguments?: unknown } }).params?.arguments ?? {} };
+      }
     }
     return null;
   }
@@ -159,8 +209,11 @@ export function createUsher(options: UsherOptions): Usher {
         }
         const principal = await auth.authenticate(request);
         if (principal instanceof Response) return principal;
-        const scope = await missingScope(request, principal);
-        if (scope) return auth.insufficientScope(request, principal, scope);
+        const missing = await missingScope(request, principal);
+        if (missing) {
+          await pipeline.recordForbidden(principal, missing.tool, missing.input);
+          return auth.insufficientScope(request, principal, toolScope(missing.tool.name));
+        }
         const token = request.headers.get("authorization")?.split(/\s+/)[1] ?? "";
         return mcp.fetch(request, principal, token);
       }

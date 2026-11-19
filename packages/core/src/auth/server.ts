@@ -615,10 +615,8 @@ export function createAuthServer(options: AuthServerOptions) {
   async function route(request: Request, pathname: string): Promise<Response | null> {
     const u = urls(request);
     const method = request.method;
-    const isMetadata =
-      pathname === `/.well-known/oauth-protected-resource${basePath}/mcp` ||
-      pathname === "/.well-known/oauth-protected-resource" ||
-      pathname === `/.well-known/oauth-authorization-server${basePath}`;
+    const isResourceMetadata = RESOURCE_METADATA_PATHS(basePath).includes(pathname);
+    const isMetadata = isResourceMetadata || AUTH_SERVER_METADATA_PATHS(basePath).includes(pathname);
 
     const confirmPrefix = `${basePath}/confirm/`;
     if (pathname.startsWith(confirmPrefix)) {
@@ -634,7 +632,7 @@ export function createAuthServer(options: AuthServerOptions) {
 
     if (isMetadata) {
       if (method !== "GET") return methodNotAllowed();
-      return pathname.startsWith("/.well-known/oauth-protected-resource")
+      return isResourceMetadata
         ? protectedResourceMetadata(u)
         : authorizationServerMetadata(u);
     }
@@ -734,3 +732,17 @@ function sameResource(a: string, b: string): boolean {
     return false;
   }
 }
+
+/** Where protected-resource metadata (RFC 9728) is served. */
+export const RESOURCE_METADATA_PATHS = (basePath: string) => [
+  `/.well-known/oauth-protected-resource${basePath}/mcp`,
+  "/.well-known/oauth-protected-resource",
+];
+
+/**
+ * Where authorization-server metadata (RFC 8414) is served. It must live at
+ * the origin's /.well-known: MCP clients only look under the issuer's path
+ * for OpenID Connect discovery, which needs ID-token signing keys Usher
+ * doesn't have (ADR 0008).
+ */
+export const AUTH_SERVER_METADATA_PATHS = (basePath: string) => [`/.well-known/oauth-authorization-server${basePath}`];

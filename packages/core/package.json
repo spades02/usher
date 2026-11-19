@@ -12,6 +12,14 @@
     "./testing": {
       "types": "./dist/testing/conformance.d.ts",
       "import": "./dist/testing/conformance.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
+    "./standalone": {
+      "types": "./dist/standalone.d.ts",
+      "import": "./dist/standalone.js"
     }
   },
   "bin": {
@@ -34,6 +42,9 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.3.4",
     "@modelcontextprotocol/client": "2.4.0",
+    "@types/express": "5.0.3",
+    "@types/node": "24.10.1",
+    "express": "5.1.0",
     "typescript": "5.9.3",
     "vitest": "3.2.4",
     "zod": "4.6.7"

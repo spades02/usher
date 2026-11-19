@@ -7,6 +7,9 @@ import {
 import { expect } from "vitest";
 import type { IdentityAdapter, Usher, UsherOptions } from "../src/index.js";
 
+/** Anything that answers HTTP like Usher: the handler itself, or a real server behind a proxy. */
+export type Target = Pick<Usher, "handler">;
+
 export const BASE = "https://shop.example";
 export const MCP_URL = `${BASE}/api/usher/mcp`;
 export const SECRET = "test-secret-0123456789-abcdefghijklmnop";
@@ -104,7 +107,7 @@ export class MemoryProvider implements OAuthClientProvider {
   }
 }
 
-export const fetchVia = (usher: Usher) => (input: RequestInfo | URL, init?: RequestInit) =>
+export const fetchVia = (usher: Target) => (input: RequestInfo | URL, init?: RequestInit) =>
   usher.handler(new Request(input, init));
 
 /** Checkbox values on a consent page: every offered scope, and the ones ticked by default. */
@@ -122,7 +125,7 @@ export interface ConsentOptions {
 
 /** Plays the customer's browser on the consent screen. Returns the agent callback URL. */
 export async function consentInBrowser(
-  usher: Usher,
+  usher: Target,
   authorizationUrl: URL | string,
   { userId = "user_1", decision = "allow", scopes }: ConsentOptions = {},
 ): Promise<URL> {
@@ -152,7 +155,7 @@ export async function consentInBrowser(
 
 /** Runs the full MCP authorization flow with the official SDK client. */
 export async function authorizeAgent(
-  usher: Usher,
+  usher: Target,
   { userId = "user_1", mode = "cimd", scopes }: { userId?: string; mode?: "cimd" | "dcr"; scopes?: string[] } = {},
 ) {
   const provider = new MemoryProvider(mode);
@@ -175,7 +178,7 @@ export async function authorizeAgent(
 
 /** An authorized, connected MCP client acting for `userId`. */
 export async function connectAgent(
-  usher: Usher,
+  usher: Target,
   opts: { userId?: string; mode?: "cimd" | "dcr"; scopes?: string[] } = {},
 ) {
   const { provider } = await authorizeAgent(usher, opts);
@@ -187,7 +190,7 @@ export async function connectAgent(
 
 /** A raw 2026-07-28 tools/call, so tests can see HTTP statuses and headers. */
 export function callTool(
-  usher: Usher,
+  usher: Target,
   token: string,
   name: string,
   args: Record<string, unknown>,
@@ -241,7 +244,7 @@ export function errorPayload(rpc: any) {
 
 /** Plays the customer on the approval page. */
 export async function decideInBrowser(
-  usher: Usher,
+  usher: Target,
   url: string,
   { userId = "user_1", decision = "allow" }: { userId?: string; decision?: "allow" | "deny" } = {},
 ) {

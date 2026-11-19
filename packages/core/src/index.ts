@@ -1,4 +1,4 @@
-import { createAuthServer } from "./auth/server.js";
+import { AUTH_SERVER_METADATA_PATHS, createAuthServer, RESOURCE_METADATA_PATHS } from "./auth/server.js";
 import { memoryStore, type AuthStore, type GrantRecord } from "./auth/store.js";
 import type { IdentityAdapter, Principal } from "./auth/types.js";
 import { isOriginAllowed } from "./origin.js";
@@ -18,7 +18,10 @@ export type {
   TokenRecord,
 } from "./auth/store.js";
 export type { IdentityAdapter, Principal, UsherUser } from "./auth/types.js";
+export { checkDeployment, type DeploymentCheck } from "./doctor.js";
 export { ToolError } from "./errors.js";
+export { httpIdentity, webhookTool, verifyWebhook, type HttpIdentityOptions, type WebhookToolOptions } from "./remote.js";
+export { toRouteHandlers, type RouteHandlers } from "./route-handlers.js";
 export type { CallResult } from "./pipeline.js";
 export {
   postgresExecutor,
@@ -116,6 +119,13 @@ export interface Usher {
    * `Request -> Response` (Next.js route handlers, Hono, Bun, Deno, Workers).
    */
   handler: (request: Request) => Promise<Response>;
+  /**
+   * True for every path Usher serves: `{basePath}/*` plus the `/.well-known`
+   * discovery documents. Adapters use it to pass other requests through.
+   */
+  matches: (pathname: string) => boolean;
+  /** The resolved mount point, e.g. `/api/usher`. */
+  basePath: string;
   /** Manage the agents a customer has connected. Use it to build a "Connected agents" page. */
   grants: {
     list(userId: string): Promise<GrantRecord[]>;
@@ -203,13 +213,19 @@ export function createUsher(options: UsherOptions): Usher {
     return null;
   }
 
+  const rootPaths = new Set([...RESOURCE_METADATA_PATHS(basePath), ...AUTH_SERVER_METADATA_PATHS(basePath)]);
+  const matches = (pathname: string) => pathname.startsWith(`${basePath}/`) || rootPaths.has(pathname);
+  const ownOrigin = options.baseUrl ? new URL(options.baseUrl).origin : undefined;
+
   return {
     grants: auth.grants,
+    matches,
+    basePath,
     async handler(request) {
       const { pathname } = new URL(request.url);
 
       if (pathname === `${basePath}/mcp`) {
-        if (!isOriginAllowed(request, allowedOrigins)) {
+        if (!isOriginAllowed(request, allowedOrigins, ownOrigin)) {
           return Response.json(
             { jsonrpc: "2.0", error: { code: -32600, message: "Origin not allowed" } },
             { status: 403 },

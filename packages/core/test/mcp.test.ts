@@ -1,10 +1,7 @@
-import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ToolError, createUsher, defineTool } from "../src/index.js";
-
-const BASE = "https://shop.example";
-const MCP_URL = `${BASE}/api/usher/mcp`;
+import { BASE, MCP_URL, authOptions, authorizeAgent, connectAgent } from "./helpers.js";
 
 const orders = [
   { id: "o_1", item: "Running shoes", status: "shipped" },
@@ -15,6 +12,7 @@ const Order = z.object({ id: z.string(), item: z.string(), status: z.string() })
 const reportedErrors: unknown[] = [];
 
 const usher = createUsher({
+  ...authOptions,
   app: { name: "Example Shop", version: "1.0.0" },
   instructions: "Use these tools to help the customer with their orders.",
   allowedOrigins: ["https://partner.example"],
@@ -55,9 +53,10 @@ const usher = createUsher({
   ],
 });
 
-/** Routes fetch() straight into the Usher handler — no network involved. */
-const inProcessFetch = (input: RequestInfo | URL, init?: RequestInit) =>
-  usher.handler(new Request(input, init));
+let accessToken = "";
+beforeAll(async () => {
+  ({ accessToken } = await authorizeAgent(usher));
+});
 
 /** Reads a JSON-RPC response whether the server answered with JSON or SSE. */
 async function readRpc(res: Response): Promise<any> {
@@ -77,6 +76,7 @@ function post(body: unknown, headers: Record<string, string> = {}) {
       headers: {
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
+        authorization: `Bearer ${accessToken}`,
         ...headers,
       },
       body: JSON.stringify(body),
@@ -86,11 +86,7 @@ function post(body: unknown, headers: Record<string, string> = {}) {
 
 describe("MCP surface — official SDK client", () => {
   it("lists and calls tools end to end", async () => {
-    const client = new Client({ name: "test-agent", version: "0.0.1" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: inProcessFetch }),
-    );
-
+    const client = await connectAgent(usher);
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name)).toEqual(["list_orders", "cancel_order", "flaky_lookup"]);
     expect(tools[0]?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
@@ -103,15 +99,11 @@ describe("MCP surface — official SDK client", () => {
 
     const result = await client.callTool({ name: "list_orders", arguments: { status: "shipped" } });
     expect(result.structuredContent).toEqual({ orders: [orders[0]] });
-
     await client.close();
   });
 
   it("shows ToolError messages and codes to the agent", async () => {
-    const client = new Client({ name: "test-agent", version: "0.0.1" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: inProcessFetch }),
-    );
+    const client = await connectAgent(usher);
     const shipped = await client.callTool({ name: "cancel_order", arguments: { orderId: "o_1" } });
     expect(shipped.isError).toBe(true);
     expect(JSON.stringify(shipped.content)).toContain("Shipped orders cannot be cancelled");
@@ -123,10 +115,7 @@ describe("MCP surface — official SDK client", () => {
 
   it("hides unexpected errors from the agent and reports them to onError", async () => {
     reportedErrors.length = 0;
-    const client = new Client({ name: "test-agent", version: "0.0.1" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: inProcessFetch }),
-    );
+    const client = await connectAgent(usher);
     const result = await client.callTool({ name: "flaky_lookup", arguments: {} });
     expect(result.isError).toBe(true);
     const shown = JSON.stringify(result.content);
@@ -137,10 +126,7 @@ describe("MCP surface — official SDK client", () => {
   });
 
   it("rejects invalid input before the handler runs", async () => {
-    const client = new Client({ name: "test-agent", version: "0.0.1" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: inProcessFetch }),
-    );
+    const client = await connectAgent(usher);
     const outcome = await client
       .callTool({ name: "list_orders", arguments: { status: "teleported" } })
       .then((r) => r, (e: unknown) => e);
@@ -229,25 +215,21 @@ describe("MCP surface — 2026-07-28 clients (stateless envelope)", () => {
 });
 
 describe("Usher routing and security", () => {
+  const initialize = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "x", version: "1" } },
+  };
+
   it("rejects disallowed browser origins with 403", async () => {
-    const res = await post(
-      { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
-      { origin: "https://evil.example" },
-    );
+    const res = await post(initialize, { origin: "https://evil.example" });
     expect(res.status).toBe(403);
   });
 
   it("allows the app's own origin and allowlisted origins", async () => {
     for (const origin of [BASE, "https://partner.example"]) {
-      const res = await post(
-        {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "x", version: "1" } },
-        },
-        { origin },
-      );
+      const res = await post(initialize, { origin });
       expect(res.status).toBe(200);
     }
   });
@@ -256,5 +238,4 @@ describe("Usher routing and security", () => {
     const res = await usher.handler(new Request(`${BASE}/api/usher/nope`));
     expect(res.status).toBe(404);
   });
-
 });

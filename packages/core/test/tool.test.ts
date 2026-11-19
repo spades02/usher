@@ -1,9 +1,10 @@
-import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createUsher, defineTool, type UsherSchema } from "../src/index.js";
+import { authOptions, connectAgent } from "./helpers.js";
 
 const app = { name: "x", version: "1" };
+const common = { ...authOptions, app };
 const base = {
   name: "ok_tool",
   description: "Does a thing.",
@@ -22,7 +23,7 @@ describe("startup validation", () => {
     ["non-object output", [{ ...base, output: z.array(z.string()) as never }], /must describe an object/],
     ["non-schema input", [{ ...base, input: { foo: "bar" } as never }], /not a supported schema/],
   ])("rejects %s", (_label, tools, message) => {
-    expect(() => createUsher({ app, tools })).toThrow(message);
+    expect(() => createUsher({ ...common, tools })).toThrow(message);
   });
 });
 
@@ -55,7 +56,7 @@ describe("schema-library neutrality", () => {
   };
 
   const usher = createUsher({
-    app,
+    ...common,
     tools: [
       defineTool({
         name: "weather",
@@ -69,12 +70,7 @@ describe("schema-library neutrality", () => {
   });
 
   it("serves a tool whose schema comes from a non-Zod library", async () => {
-    const client = new Client({ name: "t", version: "1" });
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL("https://app.example/api/usher/mcp"), {
-        fetch: (input, init) => usher.handler(new Request(input, init)),
-      }),
-    );
+    const client = await connectAgent(usher);
     const { tools } = await client.listTools();
     expect(tools[0]?.inputSchema.required).toEqual(["city"]);
 

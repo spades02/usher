@@ -45,7 +45,7 @@ Pre-alpha. Built phase by phase; each phase records one architectural decision i
 | 0 | Product shape | [0001](docs/adr/0001-product-shape.md) |
 | 1 | Protocol surface | [0002](docs/adr/0002-protocol-surface.md) |
 | 2 | Tool definition model | [0003](docs/adr/0003-tool-definition-model.md) |
-| 3 | Agent auth & consent | — |
+| 3 | Agent auth & consent | [0004](docs/adr/0004-agent-auth-and-consent.md) |
 | 4 | Permission model | — |
 | 5 | Plugin system | — |
 | 6 | Persistence | — |

@@ -11,12 +11,15 @@ import { isUsherSchema, toJsonSchema, type InferOutput, type UsherSchema } from 
  */
 export type ToolEffect = "read" | "write" | "destructive";
 
-/**
- * Per-call context handed to every tool handler.
- *
- * Phase 3 (agent auth) adds the authenticated end-user and the agent's grant.
- */
+/** Per-call context handed to every tool handler. */
 export interface ToolContext {
+  /**
+   * The customer the agent acts for. Always authenticated. Scope every query
+   * to `user.id`: this is what stops one customer's agent reading another's data.
+   */
+  user: { id: string };
+  /** The agent making the call. `verified` is true when its identity is proven by an HTTPS domain (CIMD). */
+  agent: { clientId: string; name: string; verified: boolean };
   /** The HTTP request that carried this call. */
   request: Request;
   /** Aborted when the agent cancels the call or disconnects. Pass it to fetch / DB calls. */

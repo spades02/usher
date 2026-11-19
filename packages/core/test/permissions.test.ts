@@ -5,16 +5,16 @@ import { createUsher, defineTool, toolScope, type Usher } from "../src/index.js"
 import {
   AGENT_CIMD,
   AGENT_REDIRECT,
-  BASE,
-  MCP_URL,
   authOptions,
   authorizeAgent,
+  BASE,
+  callTool,
   connectAgent,
   consentInBrowser,
-  callTool,
   consentScopes,
   decideInBrowser,
   errorPayload,
+  MCP_URL,
   readRpc,
 } from "./helpers.js";
 
@@ -137,9 +137,7 @@ describe("per-tool scopes", () => {
     expect((await client.listTools()).tools).toHaveLength(5);
 
     // The SDK sees the 403, unions the scopes and starts a new authorization.
-    await expect(client.callTool({ name: "update_address", arguments: { address: "1 Main St" } })).rejects.toThrow(
-      UnauthorizedError,
-    );
+    await expect(client.callTool({ name: "update_address", arguments: { address: "1 Main St" } })).rejects.toThrow(UnauthorizedError);
     const stepUpUrl = client.provider.authorizationUrl!;
     expect(stepUpUrl.searchParams.get("scope")!.split(" ").sort()).toEqual(["tool:list_orders", "tool:update_address"]);
 
@@ -170,11 +168,7 @@ describe("per-tool scopes", () => {
     const more = await consentPage(usher, { scope: "tool:refund" });
     expect(more.status).toBe(200);
     // Only what's granted plus what's asked for is offered.
-    expect(consentScopes(await more.text()).offered).toEqual([
-      "tool:list_orders",
-      "tool:update_address",
-      "tool:refund",
-    ]);
+    expect(consentScopes(await more.text()).offered).toEqual(["tool:list_orders", "tool:update_address", "tool:refund"]);
   });
 
   it("treats a reconnect without scopes as covered, and prompt=consent as 'edit permissions'", async () => {
@@ -295,9 +289,7 @@ describe("confirmation for destructive actions", () => {
   it("follows the tool's confirm setting, not just its effect", async () => {
     const { usher, ran, accessToken } = await setup();
     // write + confirm: true asks first...
-    expect(errorPayload(await readRpc(await callTool(usher, accessToken, "refund", { amount: 5 }))).code).toBe(
-      "confirmation_required",
-    );
+    expect(errorPayload(await readRpc(await callTool(usher, accessToken, "refund", { amount: 5 }))).code).toBe("confirmation_required");
     expect(ran.refund).toBe(0);
     // ...destructive + confirm: false doesn't.
     const cleared = await readRpc(await callTool(usher, accessToken, "clear_cart", {}));
@@ -319,10 +311,16 @@ describe("confirmation for destructive actions", () => {
 
     await decideInBrowser(usher, request.params.url);
     const retry = await readRpc(
-      await callTool(usher, accessToken, "cancel_order", { orderId: "o_1" }, {
-        capabilities,
-        params: { inputResponses: { usher_confirm: { action: "accept" } } },
-      }),
+      await callTool(
+        usher,
+        accessToken,
+        "cancel_order",
+        { orderId: "o_1" },
+        {
+          capabilities,
+          params: { inputResponses: { usher_confirm: { action: "accept" } } },
+        },
+      ),
     );
     expect(retry.result.structuredContent).toEqual({ cancelled: "o_1" });
     expect(ran.cancel).toBe(1);
@@ -333,10 +331,16 @@ describe("confirmation for destructive actions", () => {
     const capabilities = { elicitation: { url: {} } };
     await callTool(usher, accessToken, "cancel_order", { orderId: "o_1" }, { capabilities });
     const retry = await readRpc(
-      await callTool(usher, accessToken, "cancel_order", { orderId: "o_1" }, {
-        capabilities,
-        params: { inputResponses: { usher_confirm: { action: "accept" } } },
-      }),
+      await callTool(
+        usher,
+        accessToken,
+        "cancel_order",
+        { orderId: "o_1" },
+        {
+          capabilities,
+          params: { inputResponses: { usher_confirm: { action: "accept" } } },
+        },
+      ),
     );
     expect(errorPayload(retry).code).toBe("confirmation_required");
   });
@@ -387,7 +391,7 @@ describe("approval page security", () => {
       );
 
     expect((await post(confirmToken, { origin: "https://evil.example" })).status).toBe(403);
-    expect((await post(confirmToken.slice(0, -2) + "xx")).status).toBe(400);
+    expect((await post(`${confirmToken.slice(0, -2)}xx`)).status).toBe(400);
     expect((await post(confirmToken, { cookie: "session=user_2" })).status).toBe(403);
     // A consent-screen token, signed with the same secret, is not an approval.
     const consentHtml = await (await consentPage(usher, { prompt: "consent" })).text();

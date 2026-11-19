@@ -19,7 +19,6 @@ export interface QueryableAuditSink extends AuditSink {
   list(query?: AuditQuery): Promise<UsherEvent[]>;
 }
 
-
 /**
  * In-memory audit sink for development and tests. It keeps the newest `max`
  * events and loses everything on restart. Use `sqlStorage(...).auditSink` in production.

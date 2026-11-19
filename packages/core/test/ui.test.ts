@@ -1,10 +1,11 @@
+import { auth } from "@modelcontextprotocol/client";
 import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { auditLog, createUsher, defineTool, memoryAuditSink, memoryStore, type Usher, type UsherOptions } from "../src/index.js";
-import { ELEMENTS_SCRIPT, installUsherElements } from "../src/ui/elements.js";
-import { authOptions, authorizeAgent, BASE, callTool, MemoryProvider, MCP_URL, fetchVia } from "./helpers.js";
-import { auth } from "@modelcontextprotocol/client";
+import { installUsherElements } from "../src/ui/elements.js";
+import { ELEMENTS_SCRIPT } from "../src/ui/elements-script.js";
+import { authOptions, authorizeAgent, BASE, callTool, fetchVia, MCP_URL, MemoryProvider } from "./helpers.js";
 
 function makeUsher(overrides: Partial<UsherOptions> = {}) {
   const store = memoryStore();
@@ -17,7 +18,14 @@ function makeUsher(overrides: Partial<UsherOptions> = {}) {
     plugins: [auditLog({ sink })],
     account: { activity: sink },
     tools: [
-      defineTool({ name: "list_orders", title: "List orders", description: "See your orders.", input: z.object({}), effect: "read", handler: () => ({ orders: [] }) }),
+      defineTool({
+        name: "list_orders",
+        title: "List orders",
+        description: "See your orders.",
+        input: z.object({}),
+        effect: "read",
+        handler: () => ({ orders: [] }),
+      }),
       defineTool({
         name: "cancel_order",
         title: "Cancel order",
@@ -33,14 +41,20 @@ function makeUsher(overrides: Partial<UsherOptions> = {}) {
 }
 
 /** The customer's browser on the app's own settings page. */
-function account(usher: Usher, path: string, init: { method?: string; body?: unknown; user?: string | null; origin?: string | null; header?: boolean } = {}) {
+function account(
+  usher: Usher,
+  path: string,
+  init: { method?: string; body?: unknown; user?: string | null; origin?: string | null; header?: boolean } = {},
+) {
   const { method = "GET", body, user = "user_1", origin = BASE, header = true } = init;
   const headers = new Headers({ referer: `${BASE}/settings` });
   if (user) headers.set("cookie", `session=${user}`);
   if (header) headers.set("x-usher-request", "1");
   if (origin && method !== "GET") headers.set("origin", origin);
   if (body !== undefined) headers.set("content-type", "application/json");
-  return usher.handler(new Request(`${BASE}/api/usher/account/${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }));
+  return usher.handler(
+    new Request(`${BASE}/api/usher/account/${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }),
+  );
 }
 
 // ------------------------------------------------------------ customer API
@@ -100,7 +114,10 @@ describe("customer account API", () => {
     expect((await account(usher, `agents/${id}`, { method: "DELETE", origin: "https://evil.example" })).status).toBe(403);
     // No CORS: browsers refuse to send the custom header cross-site.
     const preflight = await usher.handler(
-      new Request(`${BASE}/api/usher/account/agents`, { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-headers": "x-usher-request" } }),
+      new Request(`${BASE}/api/usher/account/agents`, {
+        method: "OPTIONS",
+        headers: { origin: "https://evil.example", "access-control-request-headers": "x-usher-request" },
+      }),
     );
     expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
     expect((await account(usher, "agents")).headers.get("access-control-allow-origin")).toBeNull();
@@ -306,7 +323,15 @@ describe("custom elements", () => {
   it("<usher-agents> renders agent-chosen names as text, never HTML", async () => {
     const { usher, store } = makeUsher();
     const name = `<img src=x onerror="window.pwned=1">Evil`;
-    await store.saveGrant({ id: "g_x", userId: "user_1", clientId: "c_x", clientName: name, clientSource: "dcr", scopes: [], createdAt: 1_800_000_000 });
+    await store.saveGrant({
+      id: "g_x",
+      userId: "user_1",
+      clientId: "c_x",
+      clientName: name,
+      clientSource: "dcr",
+      scopes: [],
+      createdAt: 1_800_000_000,
+    });
     const { win } = browser(usher);
     installUsherElements(win);
     const root = await mount(win, "<usher-agents></usher-agents>");
@@ -356,4 +381,3 @@ describe("custom elements", () => {
     expect(root.querySelector<HTMLInputElement>("input")!.value).toBe(`${BASE}/agents/mcp`);
   });
 });
-

@@ -1,4 +1,4 @@
-import { isUsherSchema, toJsonSchema, type InferOutput, type UsherSchema } from "./schema.js";
+import { type InferOutput, isUsherSchema, toJsonSchema, type UsherSchema } from "./schema.js";
 
 /**
  * What a tool does to the world. Required on every tool, so nobody ships a
@@ -31,10 +31,7 @@ export interface ToolContext {
  *
  * Tools are defined once and projected onto each agent-facing surface.
  */
-export interface UsherTool<
-  Input extends UsherSchema = UsherSchema,
-  Output extends UsherSchema | undefined = UsherSchema | undefined,
-> {
+export interface UsherTool<Input extends UsherSchema = UsherSchema, Output extends UsherSchema | undefined = UsherSchema | undefined> {
   /** Stable identifier the agent calls, e.g. `list_orders`. */
   name: string;
   /** Human-readable title shown in agent UIs. */
@@ -60,10 +57,7 @@ export interface UsherTool<
    */
   confirm?: boolean | ((input: InferOutput<Input>) => string);
   /** The business logic. Throw {@link ToolError} for failures the agent should see. */
-  handler: (
-    input: InferOutput<Input>,
-    ctx: ToolContext,
-  ) => HandlerResult<Output> | Promise<HandlerResult<Output>>;
+  handler: (input: InferOutput<Input>, ctx: ToolContext) => HandlerResult<Output> | Promise<HandlerResult<Output>>;
 }
 
 type HandlerResult<Output> = Output extends UsherSchema ? InferOutput<Output> : unknown;
@@ -76,6 +70,7 @@ export function defineTool<Input extends UsherSchema, Output extends UsherSchema
 }
 
 /** Any tool, regardless of its schema types (`any` is needed for handler variance). */
+// biome-ignore lint/suspicious/noExplicitAny: handler parameters are contravariant; `unknown` would reject every typed tool
 export type AnyUsherTool = UsherTool<any, any>;
 
 /** Whether each call needs the customer's out-of-band approval (ADR 0005). */

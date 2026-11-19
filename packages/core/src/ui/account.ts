@@ -15,7 +15,7 @@ import type { GrantRecord } from "../auth/store.js";
 import type { IdentityAdapter, UsherUser } from "../auth/types.js";
 import type { QueryableAuditSink } from "../plugins/audit-log.js";
 import type { UsherEvent } from "../plugins/types.js";
-import { needsConfirmation, toolScope, type AnyUsherTool } from "../tool.js";
+import { type AnyUsherTool, needsConfirmation, toolScope } from "../tool.js";
 
 export const REQUEST_HEADER = "x-usher-request";
 

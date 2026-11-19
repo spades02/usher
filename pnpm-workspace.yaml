@@ -1,2 +1,12 @@
 packages:
   - "packages/*"
+
+# Dependencies allowed to run install scripts (pnpm blocks all others).
+# embedded-postgres only re-creates symlinks inside its own binaries; esbuild verifies its binary.
+onlyBuiltDependencies:
+  - "@embedded-postgres/darwin-arm64"
+  - "@embedded-postgres/darwin-x64"
+  - "@embedded-postgres/linux-arm64"
+  - "@embedded-postgres/linux-x64"
+  - "@embedded-postgres/windows-x64"
+  - esbuild

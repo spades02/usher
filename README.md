@@ -51,5 +51,11 @@ Pre-alpha. Built phase by phase; each phase records one architectural decision i
 | 6 | Persistence | [0007](docs/adr/0007-persistence.md) |
 | 7 | Runtime & deployment | [0008](docs/adr/0008-runtime-and-deployment.md) |
 | 8 | Customer-facing UI | [0009](docs/adr/0009-customer-facing-ui.md) |
-| 9 | Repo & release tooling | — |
+| 9 | Repo & release tooling | [0010](docs/adr/0010-repo-and-release-tooling.md) |
 | 10 | Docs site & hosted dashboard | — |
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). In short: `pnpm install`, then
+`pnpm verify` runs everything CI runs. Security reports go through
+[SECURITY.md](SECURITY.md).

@@ -2,28 +2,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { sha256 } from "../src/auth/crypto.js";
 import {
-  ToolError,
   auditLog,
+  type CallInfo,
   createUsher,
   definePlugin,
   defineTool,
   killSwitch,
   memoryAuditSink,
   rateLimit,
+  ToolError,
   toolScope,
-  type CallInfo,
   type UsherOptions,
   type UsherPlugin,
 } from "../src/index.js";
-import {
-  BASE,
-  authOptions,
-  authorizeAgent,
-  callTool,
-  decideInBrowser,
-  errorPayload,
-  readRpc,
-} from "./helpers.js";
+import { authOptions, authorizeAgent, BASE, callTool, decideInBrowser, errorPayload, readRpc } from "./helpers.js";
 
 const SECRET_NOTE = "my-private-delivery-note-1234";
 
@@ -83,7 +75,9 @@ describe("auditLog", () => {
   it("records the whole lifecycle of an agent, without customer data", async () => {
     const sink = memoryAuditSink();
     const { usher } = makeShop([auditLog({ sink })]);
-    const { accessToken } = await authorizeAgent(usher, { scopes: [toolScope("list_orders"), toolScope("track"), toolScope("cancel_order")] });
+    const { accessToken } = await authorizeAgent(usher, {
+      scopes: [toolScope("list_orders"), toolScope("track"), toolScope("cancel_order")],
+    });
 
     await call(usher, accessToken, "list_orders", { note: SECRET_NOTE });
     await call(usher, accessToken, "track", { id: "missing" });
@@ -156,7 +150,7 @@ describe("auditLog", () => {
     const { usher } = makeShop([auditLog({ sink, events: ["call"] })]);
     const { accessToken } = await authorizeAgent(usher);
     for (const id of ["a", "b", "c", "d"]) await call(usher, accessToken, "track", { id });
-    const tracked = (await sink.list());
+    const tracked = await sink.list();
     expect(tracked).toHaveLength(3); // capped at max
     expect(tracked.every((e) => e.type === "call")).toBe(true);
     expect((await sink.list({ limit: 1 }))[0]).toHaveProperty("inputHash", await sha256(JSON.stringify({ id: "d" })));
@@ -206,7 +200,14 @@ describe("plugin contract", () => {
   it("fails closed when beforeCall throws, and reports it", async () => {
     const onError = vi.fn();
     const { usher, ran } = makeShop(
-      [{ id: "broken", beforeCall: () => { throw new Error("redis down"); } }],
+      [
+        {
+          id: "broken",
+          beforeCall: () => {
+            throw new Error("redis down");
+          },
+        },
+      ],
       { onError },
     );
     const { accessToken } = await authorizeAgent(usher);
@@ -221,7 +222,15 @@ describe("plugin contract", () => {
     const onError = vi.fn();
     const sink = memoryAuditSink();
     const { usher } = makeShop(
-      [{ id: "flaky-log", onEvent: () => { throw new Error("log service down"); } }, auditLog({ sink })],
+      [
+        {
+          id: "flaky-log",
+          onEvent: () => {
+            throw new Error("log service down");
+          },
+        },
+        auditLog({ sink }),
+      ],
       { onError },
     );
     const { accessToken } = await authorizeAgent(usher);
@@ -229,13 +238,18 @@ describe("plugin contract", () => {
     expect(ok.result.structuredContent).toEqual({ orders: ["o_1"] });
     expect(onError).toHaveBeenCalledWith(expect.any(Error), { plugin: "flaky-log" });
     // The next observer still received the event.
-    expect((await sink.list({ type: "call" }))).toHaveLength(1);
+    expect(await sink.list({ type: "call" })).toHaveLength(1);
   });
 
   it("rejects malformed plugins at startup", () => {
     const make = (plugins: unknown[]) => () => makeShop(plugins as UsherPlugin[]);
     expect(make([{ id: "", onEvent() {} }])).toThrow(/non-empty string `id`/);
-    expect(make([{ id: "a", onEvent() {} }, { id: "a", onEvent() {} }])).toThrow(/duplicate id/);
+    expect(
+      make([
+        { id: "a", onEvent() {} },
+        { id: "a", onEvent() {} },
+      ]),
+    ).toThrow(/duplicate id/);
     expect(make([{ id: "a" }])).toThrow(/implements no hooks/);
     expect(make([{ id: "a", beforeCall: "yes" }])).toThrow(/beforeCall must be a function/);
     expect(() => rateLimit({ limit: 0, windowSeconds: 60 })).toThrow(/limit must be a positive integer/);

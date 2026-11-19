@@ -1,11 +1,4 @@
-import type {
-  AuthStore,
-  ClientRecord,
-  CodeRecord,
-  ConfirmationRecord,
-  GrantRecord,
-  TokenRecord,
-} from "../auth/store.js";
+import type { AuthStore, ClientRecord, CodeRecord, ConfirmationRecord, GrantRecord, TokenRecord } from "../auth/store.js";
 import type { AuditQuery, QueryableAuditSink } from "../plugins/audit-log.js";
 import type { RateLimitStore } from "../plugins/rate-limit.js";
 import type { UsherEvent } from "../plugins/types.js";
@@ -24,9 +17,7 @@ export interface SqlExecutor {
 }
 
 /** Wraps any client with `query(text, params) → { rows }`: pg Pool/Client, PGlite, @neondatabase/serverless. */
-export function postgresExecutor(client: {
-  query(text: string, params?: unknown[]): Promise<{ rows: unknown[] }>;
-}): SqlExecutor {
+export function postgresExecutor(client: { query(text: string, params?: unknown[]): Promise<{ rows: unknown[] }> }): SqlExecutor {
   return {
     dialect: "postgres",
     async query(sql, params) {
@@ -38,13 +29,11 @@ export function postgresExecutor(client: {
 }
 
 /** Wraps any client with `prepare(sql).all(...params)`: node:sqlite, better-sqlite3, bun:sqlite. */
-export function sqliteExecutor(db: {
-  prepare(sql: string): { all(...params: any[]): unknown[] };
-}): SqlExecutor {
+export function sqliteExecutor(db: { prepare(sql: string): { all(...params: never[]): unknown[] } }): SqlExecutor {
   return {
     dialect: "sqlite",
     async query(sql, params) {
-      return db.prepare(sql).all(...(params as any[])) as Record<string, unknown>[];
+      return db.prepare(sql).all(...(params as never[])) as Record<string, unknown>[];
     },
   };
 }
@@ -159,8 +148,6 @@ export function schemaSql(dialect: SqlExecutor["dialect"], options: SqlStorageOp
 }
 
 const num = (value: unknown) => Number(value);
-const optNum = (value: unknown) => (value === null || value === undefined ? undefined : Number(value));
-const optStr = (value: unknown) => (value === null || value === undefined ? undefined : String(value));
 
 /**
  * Durable storage for everything Usher keeps (ADR 0007): grants, tokens,
@@ -294,10 +281,15 @@ export function sqlStorage(db: SqlExecutor, options: SqlStorageOptions = {}) {
     consumeCode: (hash) => consume("codes", "", hash, toCode),
 
     async saveToken(t) {
-      await q(
-        `INSERT INTO ${p}tokens (hash, kind, grant_id, client_id, user_id, resource, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [t.hash, t.kind, t.grantId, t.clientId, t.userId, t.resource, t.expiresAt],
-      );
+      await q(`INSERT INTO ${p}tokens (hash, kind, grant_id, client_id, user_id, resource, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+        t.hash,
+        t.kind,
+        t.grantId,
+        t.clientId,
+        t.userId,
+        t.resource,
+        t.expiresAt,
+      ]);
     },
     async getToken(hash) {
       const row = await one(`SELECT * FROM ${p}tokens WHERE hash = ?`, [hash]);
@@ -309,7 +301,20 @@ export function sqlStorage(db: SqlExecutor, options: SqlStorageOptions = {}) {
       await q(
         `INSERT INTO ${p}confirmations (id, grant_id, user_id, client_name, tool, input_hash, summary, details, status, created_at, expires_at, decided_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [c.id, c.grantId, c.userId, c.clientName, c.tool, c.inputHash, c.summary, c.details, c.status, c.createdAt, c.expiresAt, c.decidedAt ?? null],
+        [
+          c.id,
+          c.grantId,
+          c.userId,
+          c.clientName,
+          c.tool,
+          c.inputHash,
+          c.summary,
+          c.details,
+          c.status,
+          c.createdAt,
+          c.expiresAt,
+          c.decidedAt ?? null,
+        ],
       );
     },
     async getConfirmation(id) {
@@ -326,11 +331,13 @@ export function sqlStorage(db: SqlExecutor, options: SqlStorageOptions = {}) {
     },
     async decideConfirmation(id, status, at) {
       return (
-        (await q(`UPDATE ${p}confirmations SET status = ?, decided_at = ? WHERE id = ? AND status = 'pending' RETURNING id`, [
-          status,
-          at,
-          id,
-        ])).length === 1
+        (
+          await q(`UPDATE ${p}confirmations SET status = ?, decided_at = ? WHERE id = ? AND status = 'pending' RETURNING id`, [
+            status,
+            at,
+            id,
+          ])
+        ).length === 1
       );
     },
     async consumeConfirmation(id) {
@@ -351,9 +358,15 @@ export function sqlStorage(db: SqlExecutor, options: SqlStorageOptions = {}) {
     async list({ userId, grantId, type, limit = 100 }: AuditQuery = {}) {
       const where: string[] = [];
       const params: unknown[] = [];
-      if (userId) (where.push("user_id = ?"), params.push(userId));
-      if (grantId) (where.push("grant_id = ?"), params.push(grantId));
-      if (type) (where.push("type = ?"), params.push(type));
+      for (const [column, value] of [
+        ["user_id", userId],
+        ["grant_id", grantId],
+        ["type", type],
+      ] as const) {
+        if (!value) continue;
+        where.push(`${column} = ?`);
+        params.push(value);
+      }
       params.push(Math.max(1, Math.min(1000, Math.floor(limit))));
       const rows = await q(
         `SELECT event FROM ${p}audit_events${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`,
@@ -384,21 +397,22 @@ export function sqlStorage(db: SqlExecutor, options: SqlStorageOptions = {}) {
     auditSink,
     rateLimitStore,
 
-    /** Creates or upgrades Usher's tables. Idempotent: safe on every boot and from several instances at once. */
+    /**
+     * Applies pending migrations. Safe to call on every boot, from many
+     * instances at once: Postgres's `CREATE ... IF NOT EXISTS` can still fail
+     * when two connections create the same object simultaneously, so a run
+     * that loses that race waits and retries. Every statement is idempotent,
+     * and the retry finds the winner's tables in place.
+     */
     async migrate(): Promise<{ applied: number[] }> {
-      await q(`CREATE TABLE IF NOT EXISTS ${p}migrations (version INTEGER PRIMARY KEY, applied_at BIGINT NOT NULL)`);
-      const done = new Set((await q(`SELECT version FROM ${p}migrations`)).map((r) => num(r.version)));
-      const applied: number[] = [];
-      for (const migration of migrations(db.dialect, p)) {
-        if (done.has(migration.version)) continue;
-        for (const statement of migration.statements) await q(statement);
-        await q(`INSERT INTO ${p}migrations (version, applied_at) VALUES (?, ?) ON CONFLICT (version) DO NOTHING`, [
-          migration.version,
-          Date.now(),
-        ]);
-        applied.push(migration.version);
+      for (let attempt = 1; ; attempt++) {
+        try {
+          return await migrateOnce();
+        } catch (error) {
+          if (attempt >= 8 || !isCreateRace(error)) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 25 * attempt + Math.random() * 50));
+        }
       }
-      return { applied };
     },
 
     /**
@@ -406,20 +420,44 @@ export function sqlStorage(db: SqlExecutor, options: SqlStorageOptions = {}) {
      * plenty). Codes and tokens are kept for a day past expiry, so replays
      * of recently expired secrets are still recognized.
      */
-    async prune({ now = Date.now(), auditRetentionDays }: { now?: number; auditRetentionDays?: number } = {}) {
-      const seconds = Math.floor(now / 1000);
-      const grace = seconds - 24 * 3600;
-      const count = async (sql: string, params: unknown[]) => (await q(`${sql} RETURNING 1`, params)).length;
-      return {
-        codes: await count(`DELETE FROM ${p}codes WHERE expires_at < ?`, [grace]),
-        tokens: await count(`DELETE FROM ${p}tokens WHERE expires_at < ?`, [grace]),
-        confirmations: await count(`DELETE FROM ${p}confirmations WHERE expires_at < ?`, [seconds]),
-        rateLimits: await count(`DELETE FROM ${p}rate_limits WHERE reset_at <= ?`, [now]),
-        auditEvents:
-          auditRetentionDays === undefined
-            ? 0
-            : await count(`DELETE FROM ${p}audit_events WHERE at < ?`, [now - auditRetentionDays * 86_400_000]),
-      };
-    },
+    prune,
   };
+
+  async function migrateOnce(): Promise<{ applied: number[] }> {
+    await q(`CREATE TABLE IF NOT EXISTS ${p}migrations (version INTEGER PRIMARY KEY, applied_at BIGINT NOT NULL)`);
+    const done = new Set((await q(`SELECT version FROM ${p}migrations`)).map((r) => num(r.version)));
+    const applied: number[] = [];
+    for (const migration of migrations(db.dialect, p)) {
+      if (done.has(migration.version)) continue;
+      for (const statement of migration.statements) await q(statement);
+      await q(`INSERT INTO ${p}migrations (version, applied_at) VALUES (?, ?) ON CONFLICT (version) DO NOTHING`, [
+        migration.version,
+        Date.now(),
+      ]);
+      applied.push(migration.version);
+    }
+    return { applied };
+  }
+
+  async function prune({ now = Date.now(), auditRetentionDays }: { now?: number; auditRetentionDays?: number } = {}) {
+    const seconds = Math.floor(now / 1000);
+    const grace = seconds - 24 * 3600;
+    const count = async (sql: string, params: unknown[]) => (await q(`${sql} RETURNING 1`, params)).length;
+    return {
+      codes: await count(`DELETE FROM ${p}codes WHERE expires_at < ?`, [grace]),
+      tokens: await count(`DELETE FROM ${p}tokens WHERE expires_at < ?`, [grace]),
+      confirmations: await count(`DELETE FROM ${p}confirmations WHERE expires_at < ?`, [seconds]),
+      rateLimits: await count(`DELETE FROM ${p}rate_limits WHERE reset_at <= ?`, [now]),
+      auditEvents:
+        auditRetentionDays === undefined
+          ? 0
+          : await count(`DELETE FROM ${p}audit_events WHERE at < ?`, [now - auditRetentionDays * 86_400_000]),
+    };
+  }
+}
+
+/** Postgres errors from two connections creating the same table, index or type at once. */
+function isCreateRace(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === "23505" || code === "42P07" || code === "42710";
 }

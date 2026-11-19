@@ -11,10 +11,10 @@ import {
   memoryStore,
   postgresExecutor,
   rateLimit,
-  schemaSql,
-  sqlStorage,
-  sqliteExecutor,
   type SqlExecutor,
+  schemaSql,
+  sqliteExecutor,
+  sqlStorage,
 } from "../src/index.js";
 import { auditSinkConformance, authStoreConformance, rateLimitStoreConformance } from "../src/testing/conformance.js";
 import { authOptions, authorizeAgent, callTool, decideInBrowser, errorPayload, readRpc } from "./helpers.js";
@@ -167,7 +167,17 @@ describe.each(Object.keys(backends))("%s: prune", (name) => {
     await store.saveToken({ ...base, hash: "recent", kind: "refresh", expiresAt: s - 3600 }); // within the replay grace day
     await store.saveToken({ ...base, hash: "live", kind: "access", expiresAt: s + 3600 });
     await store.saveCode({ ...base, hash: "c_old", redirectUri: "r", codeChallenge: "x", expiresAt: s - 2 * 86400 });
-    const conf = { grantId: "g", userId: "u", clientName: "A", tool: "t", inputHash: "h", summary: "s", details: "d", status: "pending" as const, createdAt: s - 2000 };
+    const conf = {
+      grantId: "g",
+      userId: "u",
+      clientName: "A",
+      tool: "t",
+      inputHash: "h",
+      summary: "s",
+      details: "d",
+      status: "pending" as const,
+      createdAt: s - 2000,
+    };
     await store.saveConfirmation({ ...conf, id: "cf_old", expiresAt: s - 1 });
     await store.saveConfirmation({ ...conf, id: "cf_live", expiresAt: s + 600 });
     await storage.rateLimitStore.hit("rl_old", 60, now - 120_000);

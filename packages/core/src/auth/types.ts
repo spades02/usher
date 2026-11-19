@@ -25,4 +25,3 @@ export interface Principal {
   /** What the customer allowed this agent to do, e.g. `tool:list_orders`. Read live from the grant. */
   scopes: string[];
 }
-

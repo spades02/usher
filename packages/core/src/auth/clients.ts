@@ -69,7 +69,7 @@ export function createClientResolver(store: AuthStore, fetchMetadata: MetadataFe
     }
     const authMethod = doc.token_endpoint_auth_method;
     if (authMethod !== undefined && authMethod !== "none") {
-      throw new OAuthError("invalid_client", "Only public clients (token_endpoint_auth_method \"none\") are supported");
+      throw new OAuthError("invalid_client", 'Only public clients (token_endpoint_auth_method "none") are supported');
     }
 
     const client: ClientRecord = {
@@ -128,14 +128,25 @@ export function isPrivateHost(hostname: string): boolean {
   if (v4) {
     const [a, b] = [Number(v4[1]), Number(v4[2])];
     return (
-      a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127) || a >= 224
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      a >= 224
     );
   }
   if (host.includes(":")) {
-    return host === "::1" || host === "::" || host.startsWith("fc") || host.startsWith("fd") ||
-      host.startsWith("fe80") || host.startsWith("::ffff:");
+    return (
+      host === "::1" ||
+      host === "::" ||
+      host.startsWith("fc") ||
+      host.startsWith("fd") ||
+      host.startsWith("fe80") ||
+      host.startsWith("::ffff:")
+    );
   }
   return false;
 }

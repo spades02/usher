@@ -94,6 +94,7 @@ export interface UsherPlugin {
    * call. If it throws, the call is denied (fail closed) and the error goes
    * to `onError`.
    */
+  // biome-ignore lint/suspicious/noConfusingVoidType: plugins that allow a call simply return nothing
   beforeCall?(call: CallInfo): PluginDenial | void | Promise<PluginDenial | void>;
   /**
    * Observes everything that happens. It's awaited, so a durable audit write

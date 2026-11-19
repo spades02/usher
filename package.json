@@ -6,6 +6,20 @@
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome ci --error-on-warnings .",
+    "format": "biome check --write .",
+    "changeset": "changeset",
+    "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm -r api:check && pnpm -r check:package && pnpm test",
+    "release": "pnpm build && pnpm -r api:check && pnpm -r check:package && changeset publish"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@biomejs/biome": "2.6.5",
+    "@changesets/cli": "3.0.3",
+    "publint": "0.3.25"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }

@@ -1,15 +1,24 @@
-import { auth } from "@modelcontextprotocol/client";
-import express from "express";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { createServer, type RequestListener } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { auth } from "@modelcontextprotocol/client";
+import express from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { doctor } from "../src/cli.js";
-import { checkDeployment, createUsher, defineTool, toRouteHandlers, type RouteHandlers, verifyWebhook, type Usher, type UsherOptions } from "../src/index.js";
-import { toNodeHandler, type NodeHandlerOptions } from "../src/node.js";
-import { createStandaloneServer, resolveEnv, serveFromFile, type StandaloneConfig } from "../src/standalone.js";
+import {
+  checkDeployment,
+  createUsher,
+  defineTool,
+  type RouteHandlers,
+  toRouteHandlers,
+  type Usher,
+  type UsherOptions,
+  verifyWebhook,
+} from "../src/index.js";
+import { type NodeHandlerOptions, toNodeHandler } from "../src/node.js";
+import { createStandaloneServer, resolveEnv, type StandaloneConfig, serveFromFile } from "../src/standalone.js";
 import {
   authOptions,
   authorizeAgent,
@@ -19,8 +28,8 @@ import {
   decideInBrowser,
   errorPayload,
   fetchVia,
-  MemoryProvider,
   MCP_URL,
+  MemoryProvider,
   readRpc,
   SECRET,
   type Target,
@@ -132,7 +141,9 @@ describe("mounting", () => {
     const usher = makeUsher();
     const onlyBasePath: Target = {
       handler: (request) =>
-        new URL(request.url).pathname.startsWith("/api/usher/") ? usher.handler(request) : Promise.resolve(new Response("Not found", { status: 404 })),
+        new URL(request.url).pathname.startsWith("/api/usher/")
+          ? usher.handler(request)
+          : Promise.resolve(new Response("Not found", { status: 404 })),
     };
     const missing = await checkDeployment(BASE, { fetch: fetchVia(onlyBasePath) });
     expect(missing.ok).toBe(false);
@@ -144,10 +155,15 @@ describe("mounting", () => {
 
     const internal = makeUsher({ baseUrl: "http://10.0.0.7:3000" }); // The proxy's view leaked into baseUrl.
     const wrong = await checkDeployment(BASE, { fetch: fetchVia(internal) });
-    expect(wrong.checks.find((c) => c.name === "Protected resource metadata")?.detail).toContain("expected https://shop.example/api/usher/mcp");
+    expect(wrong.checks.find((c) => c.name === "Protected resource metadata")?.detail).toContain(
+      "expected https://shop.example/api/usher/mcp",
+    );
 
     expect(await checkDeployment(BASE, { fetch: fetchVia(usher) })).toMatchObject({ ok: true });
-    expect((await checkDeployment("http://shop.example", { fetch: fetchVia(usher) })).checks[0]).toMatchObject({ name: "HTTPS", ok: false });
+    expect((await checkDeployment("http://shop.example", { fetch: fetchVia(usher) })).checks[0]).toMatchObject({
+      name: "HTTPS",
+      ok: false,
+    });
 
     const report = await doctor([BASE], fetchVia(usher) as typeof fetch);
     expect(report).toMatchObject({ code: 0, out: expect.stringContaining("Ready for agents.") });
@@ -166,7 +182,15 @@ describe("mounting", () => {
     ]) {
       expect(usher.matches(p), p).toBe(true);
     }
-    for (const p of ["/", "/api/usher", "/api/usherx/mcp", "/.well-known/openid-configuration", "/.well-known/oauth-authorization-server", "/.well-known/apple-app-site-association", "/login"]) {
+    for (const p of [
+      "/",
+      "/api/usher",
+      "/api/usherx/mcp",
+      "/.well-known/openid-configuration",
+      "/.well-known/oauth-authorization-server",
+      "/.well-known/apple-app-site-association",
+      "/login",
+    ]) {
       expect(usher.matches(p), p).toBe(false);
     }
   });
@@ -450,18 +474,30 @@ describe("usherjs serve (standalone, for apps not written in JS)", () => {
     const { grants } = await (await admin("/users/user_1/grants")).json();
     expect(grants).toHaveLength(1);
 
-    expect((await admin(`/users/user_1/grants/${grants[0].id}/scopes`, { method: "PUT", body: JSON.stringify({ scopes: ["tool:list_orders"] }) })).status).toBe(204);
+    expect(
+      (
+        await admin(`/users/user_1/grants/${grants[0].id}/scopes`, {
+          method: "PUT",
+          body: JSON.stringify({ scopes: ["tool:list_orders"] }),
+        })
+      ).status,
+    ).toBe(204);
     expect((await admin(`/users/user_1/grants/${grants[0].id}`, { method: "DELETE" })).status).toBe(204);
     expect((await callTool(target, accessToken, "list_orders", {})).status).toBe(401);
     const { events } = await (await admin("/users/user_1/events")).json();
-    expect(events.map((e: { type: string }) => e.type)).toEqual(expect.arrayContaining(["grant.created", "grant.updated", "grant.revoked"]));
+    expect(events.map((e: { type: string }) => e.type)).toEqual(
+      expect.arrayContaining(["grant.created", "grant.updated", "grant.revoked"]),
+    );
   });
 
   it("serves from a config file with env: secrets", async () => {
     const app = await fakeApp();
     const dir = await mkdtemp(join(tmpdir(), "usher-"));
     const file = join(dir, "usher.config.json");
-    await writeFile(file, JSON.stringify({ ...standaloneConfig(app.port), secret: "env:USHER_SECRET", webhookSecret: "env:USHER_WEBHOOK_SECRET" }));
+    await writeFile(
+      file,
+      JSON.stringify({ ...standaloneConfig(app.port), secret: "env:USHER_SECRET", webhookSecret: "env:USHER_WEBHOOK_SECRET" }),
+    );
     const standalone = await serveFromFile(file, { USHER_SECRET: SECRET, USHER_WEBHOOK_SECRET: WEBHOOK_SECRET, PORT: "0" });
     cleanup.push(() => standalone.close());
     const port = (standalone.server.address() as { port: number }).port;
@@ -480,7 +516,7 @@ describe("webhook signatures", () => {
     const header = (secret: string, ts = t, b = body) => `t=${ts},v1=${createHmac("sha256", secret).update(`${ts}.${b}`).digest("hex")}`;
 
     expect(await verifyWebhook(WEBHOOK_SECRET, body, header(WEBHOOK_SECRET))).toBe(true); // Plain HMAC: any language can verify.
-    expect(await verifyWebhook(WEBHOOK_SECRET, body + " ", header(WEBHOOK_SECRET))).toBe(false);
+    expect(await verifyWebhook(WEBHOOK_SECRET, `${body} `, header(WEBHOOK_SECRET))).toBe(false);
     expect(await verifyWebhook(WEBHOOK_SECRET, body, header("another-secret-0123456789-abcdefghij"))).toBe(false);
     expect(await verifyWebhook(WEBHOOK_SECRET, body, header(WEBHOOK_SECRET, t - 600))).toBe(false);
     expect(await verifyWebhook(WEBHOOK_SECRET, body, null)).toBe(false);

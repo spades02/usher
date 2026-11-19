@@ -2,13 +2,10 @@ import { canonicalJson, sha256 } from "./auth/crypto.js";
 import type { Principal } from "./auth/types.js";
 import { ToolError } from "./errors.js";
 import type { CallInfo, CallOutcome, PluginDenial, UsherEvent, UsherPlugin } from "./plugins/types.js";
-import { toolScope, type AnyUsherTool } from "./tool.js";
+import { type AnyUsherTool, toolScope } from "./tool.js";
 
 /** The confirmation gate's verdict (ADR 0005). */
-export type ConfirmationVerdict =
-  | { kind: "allow" }
-  | { kind: "confirm"; url: string; summary: string }
-  | { kind: "declined" };
+export type ConfirmationVerdict = { kind: "allow" } | { kind: "confirm"; url: string; summary: string } | { kind: "declined" };
 
 /**
  * How one tool call ended, independent of any protocol. Each surface (MCP
@@ -84,6 +81,7 @@ export function createCallPipeline(options: PipelineOptions) {
       request,
     };
     for (const plugin of guards) {
+      // biome-ignore lint/suspicious/noConfusingVoidType: mirrors beforeCall's return type
       let denial: PluginDenial | void;
       try {
         denial = await plugin.beforeCall!(info);

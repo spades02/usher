@@ -9,10 +9,12 @@
  * The reverse proxy routes `{basePath}/*` and `/.well-known/oauth-*` on the
  * app's own domain to this server, so it sees the app's session cookie.
  */
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+
 import { readFile } from "node:fs/promises";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve as resolvePath } from "node:path";
 import { z } from "zod";
+import { timingSafeEqual } from "./auth/crypto.js";
 import { createUsher, type Usher } from "./index.js";
 import { toNodeHandler } from "./node.js";
 import { auditLog } from "./plugins/audit-log.js";
@@ -20,8 +22,7 @@ import { rateLimit } from "./plugins/rate-limit.js";
 import type { UsherPlugin } from "./plugins/types.js";
 import { httpIdentity, webhookTool } from "./remote.js";
 import type { UsherSchema } from "./schema.js";
-import { timingSafeEqual } from "./auth/crypto.js";
-import { postgresExecutor, sqliteExecutor, sqlStorage, type SqlExecutor } from "./storage/sql.js";
+import { postgresExecutor, type SqlExecutor, sqliteExecutor, sqlStorage } from "./storage/sql.js";
 import type { AnyUsherTool } from "./tool.js";
 import type { UsherTheme } from "./ui/theme.js";
 
@@ -246,7 +247,8 @@ function adminApi(usher: Usher, token: string, listEvents: ReturnType<typeof sql
         let body = "";
         for await (const chunk of req) body += chunk;
         const scopes = (JSON.parse(body || "{}") as { scopes?: unknown }).scopes;
-        if (!Array.isArray(scopes) || !scopes.every((s) => typeof s === "string")) return send(res, 400, { error: "scopes must be a string array" });
+        if (!Array.isArray(scopes) || !scopes.every((s) => typeof s === "string"))
+          return send(res, 400, { error: "scopes must be a string array" });
         await usher.grants.setScopes(userId, grantId, scopes);
         return send(res, 204);
       }
@@ -256,7 +258,6 @@ function adminApi(usher: Usher, token: string, listEvents: ReturnType<typeof sql
     }
   };
 }
-
 
 /** `usherjs serve [usher.config.json]`: reads the config, resolves `env:` values, listens. */
 export async function serveFromFile(path: string, env: Record<string, string | undefined> = process.env): Promise<StandaloneServer> {

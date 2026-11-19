@@ -4,8 +4,9 @@
  * (`usherjs serve`) is built from these, and JS apps can mix them in too,
  * e.g. to expose one tool that lives in another service.
  */
-import type { IdentityAdapter, UsherUser } from "./auth/types.js";
+
 import { timingSafeEqual } from "./auth/crypto.js";
+import type { IdentityAdapter, UsherUser } from "./auth/types.js";
 import { ToolError } from "./errors.js";
 import type { InferOutput, UsherSchema } from "./schema.js";
 import type { AnyUsherTool, ToolEffect } from "./tool.js";

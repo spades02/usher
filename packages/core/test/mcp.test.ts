@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { ToolError, createUsher, defineTool } from "../src/index.js";
-import { BASE, MCP_URL, authOptions, authorizeAgent, connectAgent } from "./helpers.js";
+import { createUsher, defineTool, ToolError } from "../src/index.js";
+import { authOptions, authorizeAgent, BASE, connectAgent, MCP_URL } from "./helpers.js";
 
 const orders = [
   { id: "o_1", item: "Running shoes", status: "shipped" },
@@ -128,9 +128,10 @@ describe("MCP surface — official SDK client", () => {
 
   it("rejects invalid input before the handler runs", async () => {
     const client = await connectAgent(usher);
-    const outcome = await client
-      .callTool({ name: "list_orders", arguments: { status: "teleported" } })
-      .then((r) => r, (e: unknown) => e);
+    const outcome = await client.callTool({ name: "list_orders", arguments: { status: "teleported" } }).then(
+      (r) => r,
+      (e: unknown) => e,
+    );
     // Either an in-band error result or a protocol error is acceptable; it must not succeed.
     const asText = JSON.stringify(outcome instanceof Error ? outcome.message : outcome);
     expect(asText).toMatch(/invalid|validation/i);
@@ -156,10 +157,7 @@ describe("MCP surface — 2025-era clients (initialize handshake)", () => {
     expect(initRpc.result.serverInfo.name).toBe("Example Shop");
     expect(initRpc.result.instructions).toContain("orders");
 
-    const list = await post(
-      { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
-      { "mcp-protocol-version": "2025-06-18" },
-    );
+    const list = await post({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }, { "mcp-protocol-version": "2025-06-18" });
     const listRpc = await readRpc(list);
     expect(listRpc.result.tools).toHaveLength(3);
   });
@@ -178,10 +176,7 @@ describe("MCP surface — 2026-07-28 clients (stateless envelope)", () => {
   });
 
   it("answers server/discover", async () => {
-    const res = await post(
-      { jsonrpc: "2.0", id: 1, method: "server/discover", params: { _meta: meta } },
-      modernHeaders("server/discover"),
-    );
+    const res = await post({ jsonrpc: "2.0", id: 1, method: "server/discover", params: { _meta: meta } }, modernHeaders("server/discover"));
     const rpc = await readRpc(res);
     expect(rpc.result.supportedVersions).toContain("2026-07-28");
     expect(rpc.result.capabilities.tools).toBeDefined();

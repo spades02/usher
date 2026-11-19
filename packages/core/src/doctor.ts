@@ -24,7 +24,11 @@ export async function checkDeployment(
   const add = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
 
   const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(new URL(origin).hostname);
-  add("HTTPS", origin.startsWith("https://") || local, origin.startsWith("https://") ? origin : `${origin} must use HTTPS: agents refuse plain HTTP outside localhost`);
+  add(
+    "HTTPS",
+    origin.startsWith("https://") || local,
+    origin.startsWith("https://") ? origin : `${origin} must use HTTPS: agents refuse plain HTTP outside localhost`,
+  );
 
   const getJson = async (url: string) => {
     try {
@@ -39,14 +43,30 @@ export async function checkDeployment(
 
   const prmPath = `/.well-known/oauth-protected-resource${basePath}/mcp`;
   const prm = await getJson(origin + prmPath);
-  if (prm.status !== 200 || !prm.body) add("Protected resource metadata", false, `GET ${prmPath} returned ${prm.status || "no response"}. ${routeHint("/.well-known/oauth-protected-resource/*")}`);
-  else if (prm.body.resource !== resource) add("Protected resource metadata", false, `resource is ${String(prm.body.resource)}, expected ${resource}. Set \`baseUrl\` (or trustProxy) so Usher knows its public origin`);
+  if (prm.status !== 200 || !prm.body)
+    add(
+      "Protected resource metadata",
+      false,
+      `GET ${prmPath} returned ${prm.status || "no response"}. ${routeHint("/.well-known/oauth-protected-resource/*")}`,
+    );
+  else if (prm.body.resource !== resource)
+    add(
+      "Protected resource metadata",
+      false,
+      `resource is ${String(prm.body.resource)}, expected ${resource}. Set \`baseUrl\` (or trustProxy) so Usher knows its public origin`,
+    );
   else add("Protected resource metadata", true, prmPath);
 
   const asPath = `/.well-known/oauth-authorization-server${basePath}`;
   const as = await getJson(origin + asPath);
-  if (as.status !== 200 || !as.body) add("Authorization server metadata", false, `GET ${asPath} returned ${as.status || "no response"}. ${routeHint("/.well-known/oauth-authorization-server/*")}`);
-  else if (as.body.issuer !== issuer) add("Authorization server metadata", false, `issuer is ${String(as.body.issuer)}, expected ${issuer}. Set \`baseUrl\``);
+  if (as.status !== 200 || !as.body)
+    add(
+      "Authorization server metadata",
+      false,
+      `GET ${asPath} returned ${as.status || "no response"}. ${routeHint("/.well-known/oauth-authorization-server/*")}`,
+    );
+  else if (as.body.issuer !== issuer)
+    add("Authorization server metadata", false, `issuer is ${String(as.body.issuer)}, expected ${issuer}. Set \`baseUrl\``);
   else add("Authorization server metadata", true, asPath);
 
   try {
@@ -59,7 +79,9 @@ export async function checkDeployment(
     add(
       "MCP endpoint challenge",
       res.status === 401 && challenge.includes("resource_metadata="),
-      res.status === 401 ? `401 with ${challenge ? "WWW-Authenticate" : "no WWW-Authenticate header (is a proxy stripping it?)"}` : `POST ${basePath}/mcp returned ${res.status}, expected 401. ${routeHint(`${basePath}/*`)}`,
+      res.status === 401
+        ? `401 with ${challenge ? "WWW-Authenticate" : "no WWW-Authenticate header (is a proxy stripping it?)"}`
+        : `POST ${basePath}/mcp returned ${res.status}, expected 401. ${routeHint(`${basePath}/*`)}`,
     );
   } catch (error) {
     add("MCP endpoint challenge", false, error instanceof Error ? error.message : String(error));

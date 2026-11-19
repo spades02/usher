@@ -1,8 +1,8 @@
-import { needsConfirmation, toolScope, type AnyUsherTool, type ToolEffect } from "../tool.js";
+import { type AnyUsherTool, needsConfirmation, type ToolEffect, toolScope } from "../tool.js";
+import { type ResolvedTheme, resolveTheme } from "../ui/theme.js";
 import { redirectRisk } from "./clients.js";
 import type { ClientRecord, ConfirmationRecord } from "./store.js";
 import type { UsherUser } from "./types.js";
-import { resolveTheme, type ResolvedTheme } from "../ui/theme.js";
 
 /**
  * Consent and approval pages. Server-rendered, no JavaScript, no external
@@ -16,12 +16,7 @@ const EFFECT_LABEL: Record<ToolEffect, string> = {
 };
 
 export function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 /** Headers that keep the pages from being framed (clickjacking) or cached. Only the theme's logo may load. */
@@ -84,9 +79,7 @@ export function renderConsentPage(input: {
     })
     .join("");
 
-  const manage = theme.accountSettings
-    ? `from <a href="${e(theme.accountSettings)}">Connected agents</a>`
-    : "from your account settings";
+  const manage = theme.accountSettings ? `from <a href="${e(theme.accountSettings)}">Connected agents</a>` : "from your account settings";
   return page(
     theme,
     appName,
@@ -144,7 +137,12 @@ export function renderConfirmPage(input: {
 
 /** Shown after a decision: the customer goes back to their agent. */
 export function renderDonePage(appName: string, heading: string, message: string, theme = DEFAULT_THEME): string {
-  return page(theme, appName, `${escapeHtml(heading)} - ${escapeHtml(appName)}`, `<h1>${escapeHtml(heading)}</h1><p>${escapeHtml(message)}</p>`);
+  return page(
+    theme,
+    appName,
+    `${escapeHtml(heading)} - ${escapeHtml(appName)}`,
+    `<h1>${escapeHtml(heading)}</h1><p>${escapeHtml(message)}</p>`,
+  );
 }
 
 export function renderErrorPage(

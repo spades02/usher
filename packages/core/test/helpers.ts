@@ -1,9 +1,4 @@
-import {
-  Client,
-  StreamableHTTPClientTransport,
-  auth,
-  type OAuthClientProvider,
-} from "@modelcontextprotocol/client";
+import { auth, Client, type OAuthClientProvider, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { expect } from "vitest";
 import type { IdentityAdapter, Usher, UsherOptions } from "../src/index.js";
 
@@ -107,8 +102,7 @@ export class MemoryProvider implements OAuthClientProvider {
   }
 }
 
-export const fetchVia = (usher: Target) => (input: RequestInfo | URL, init?: RequestInit) =>
-  usher.handler(new Request(input, init));
+export const fetchVia = (usher: Target) => (input: RequestInfo | URL, init?: RequestInit) => usher.handler(new Request(input, init));
 
 /** Checkbox values on a consent page: every offered scope, and the ones ticked by default. */
 export function consentScopes(html: string) {
@@ -177,10 +171,7 @@ export async function authorizeAgent(
 }
 
 /** An authorized, connected MCP client acting for `userId`. */
-export async function connectAgent(
-  usher: Target,
-  opts: { userId?: string; mode?: "cimd" | "dcr"; scopes?: string[] } = {},
-) {
+export async function connectAgent(usher: Target, opts: { userId?: string; mode?: "cimd" | "dcr"; scopes?: string[] } = {}) {
   const { provider } = await authorizeAgent(usher, opts);
   const client = new Client({ name: "test-agent", version: "0.0.1" });
   const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), { fetch: fetchVia(usher), authProvider: provider });
@@ -263,4 +254,3 @@ export async function decideInBrowser(
   );
   return { html, res, confirmToken: confirmToken! };
 }
-

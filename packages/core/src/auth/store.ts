@@ -173,7 +173,7 @@ export function memoryStore(): AuthStore {
     },
     async consumeRefreshToken(hash) {
       const entry = tokens.get(hash);
-      if (!entry || entry.kind !== "refresh") return null;
+      if (entry?.kind !== "refresh") return null;
       const firstUse = !entry.used;
       entry.used = true;
       const { used: _, ...record } = entry;
@@ -196,7 +196,7 @@ export function memoryStore(): AuthStore {
     },
     async decideConfirmation(id, status, at) {
       const entry = confirmations.get(id);
-      if (!entry || entry.status !== "pending") return false;
+      if (entry?.status !== "pending") return false;
       entry.status = status;
       entry.decidedAt = at;
       return true;

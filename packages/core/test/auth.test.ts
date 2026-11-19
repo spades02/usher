@@ -1,19 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { sha256 } from "../src/auth/crypto.js";
-import { createUsher, defineTool, memoryStore, type AuthStore, type TokenRecord, type Usher } from "../src/index.js";
+import { type AuthStore, createUsher, defineTool, memoryStore, type TokenRecord, type Usher } from "../src/index.js";
 import {
   AGENT_CIMD,
   AGENT_REDIRECT,
-  BASE,
-  MCP_URL,
-  SECRET,
   authOptions,
   authorizeAgent,
+  BASE,
   cimdDocuments,
   connectAgent,
   consentInBrowser,
   identity,
+  MCP_URL,
+  SECRET,
 } from "./helpers.js";
 
 const AUTHORIZE = `${BASE}/api/usher/oauth/authorize`;
@@ -220,7 +220,9 @@ describe("consent screen", () => {
     const html = await (await page()).text();
     expect(html).toContain("Test Agent wants access to your Example Shop account");
     expect(html).toContain("Verified domain: <strong>agent.example</strong>");
-    expect(html).toMatch(/class="destructive">Irreversible actions<\/h3><ul><li><label><input type="checkbox" name="scope" value="tool:delete_account" checked> <strong>delete_account/);
+    expect(html).toMatch(
+      /class="destructive">Irreversible actions<\/h3><ul><li><label><input type="checkbox" name="scope" value="tool:delete_account" checked> <strong>delete_account/,
+    );
     expect(html).toContain("Asks you before each use.");
   });
 
@@ -289,9 +291,7 @@ describe("authorization request validation", () => {
   it("rejects a CIMD document whose client_id doesn't match its URL", async () => {
     const impostor = "https://agent.example/oauth/impostor.json";
     cimdDocuments.set(impostor, { client_id: AGENT_CIMD, client_name: "Impostor", redirect_uris: [AGENT_REDIRECT] });
-    const res = await usher.handler(
-      new Request(authorizeUrl({ code_challenge: await sha256(VERIFIER), client_id: impostor }), asUser),
-    );
+    const res = await usher.handler(new Request(authorizeUrl({ code_challenge: await sha256(VERIFIER), client_id: impostor }), asUser));
     expect(res.status).toBe(400);
     expect(await res.text()).toContain("does not match");
   });
@@ -301,11 +301,14 @@ describe("authorization request validation", () => {
     async (clientId) => {
       let fetched = false;
       const guarded = makeUsher({
-        auth: { fetchClientMetadata: async () => ((fetched = true), new Response("{}")) },
+        auth: {
+          fetchClientMetadata: async () => {
+            fetched = true;
+            return new Response("{}");
+          },
+        },
       });
-      const res = await guarded.handler(
-        new Request(authorizeUrl({ code_challenge: await sha256(VERIFIER), client_id: clientId }), asUser),
-      );
+      const res = await guarded.handler(new Request(authorizeUrl({ code_challenge: await sha256(VERIFIER), client_id: clientId }), asUser));
       expect(res.status).toBe(400);
       expect(fetched).toBe(false);
     },
@@ -367,8 +370,7 @@ describe("token endpoint", () => {
   it("rotates refresh tokens and revokes the grant if an old one is reused", async () => {
     const usher = makeUsher();
     const first = await (await exchange(usher, await getCode(usher))).json();
-    const refresh = (token: string) =>
-      tokenRequest(usher, { grant_type: "refresh_token", refresh_token: token, client_id: AGENT_CIMD });
+    const refresh = (token: string) => tokenRequest(usher, { grant_type: "refresh_token", refresh_token: token, client_id: AGENT_CIMD });
 
     const second = await (await refresh(first.refresh_token)).json();
     expect(second.access_token).toBeTruthy();
@@ -394,7 +396,13 @@ describe("token endpoint", () => {
   it("stores only hashes of codes and tokens", async () => {
     const saved: TokenRecord[] = [];
     const inner = memoryStore();
-    const spy: AuthStore = { ...inner, saveToken: async (t) => (saved.push(t), inner.saveToken(t)) };
+    const spy: AuthStore = {
+      ...inner,
+      saveToken: async (t) => {
+        saved.push(t);
+        return inner.saveToken(t);
+      },
+    };
     const usher = makeUsher({ store: spy });
     const tokens = await (await exchange(usher, await getCode(usher))).json();
     const stored = JSON.stringify(saved);

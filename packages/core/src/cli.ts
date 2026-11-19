@@ -53,7 +53,7 @@ const invoked = proc?.argv[1]?.split("\\").join("/");
 if (proc && invoked && /\/(cli\.(js|ts)|usherjs)$/.test(invoked)) {
   if (proc.argv[2] === "doctor") {
     const { code, out } = await doctor(proc.argv.slice(3));
-    proc.stdout.write(out + "\n");
+    proc.stdout.write(`${out}\n`);
     proc.exitCode = code;
   } else if (proc.argv[2] === "serve") {
     const { serveFromFile } = await import("./standalone.js");
@@ -63,7 +63,7 @@ if (proc && invoked && /\/(cli\.(js|ts)|usherjs)$/.test(invoked)) {
     });
   } else {
     const { code, out } = main(proc.argv.slice(2));
-    proc.stdout.write(out + "\n");
+    proc.stdout.write(`${out}\n`);
     proc.exitCode = code;
   }
 }

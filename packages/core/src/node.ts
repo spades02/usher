@@ -96,7 +96,12 @@ function first(value: string | string[] | undefined): string | undefined {
 
 function requestUrl(req: NodeRequest, trustProxy: boolean): URL {
   const forwardedProto = trustProxy ? first(req.headers["x-forwarded-proto"]) : undefined;
-  const proto = forwardedProto === "https" || forwardedProto === "http" ? forwardedProto : (req.socket as { encrypted?: boolean } | null | undefined)?.encrypted ? "https" : "http";
+  const proto =
+    forwardedProto === "https" || forwardedProto === "http"
+      ? forwardedProto
+      : (req.socket as { encrypted?: boolean } | null | undefined)?.encrypted
+        ? "https"
+        : "http";
   const host = (trustProxy ? first(req.headers["x-forwarded-host"]) : undefined) ?? first(req.headers.host) ?? "localhost";
   return new URL(req.originalUrl ?? req.url ?? "/", `${proto}://${host}`);
 }

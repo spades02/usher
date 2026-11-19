@@ -1,17 +1,16 @@
 import { AUTH_SERVER_METADATA_PATHS, createAuthServer, RESOURCE_METADATA_PATHS } from "./auth/server.js";
-import { memoryStore, type AuthStore, type GrantRecord } from "./auth/store.js";
+import { type AuthStore, type GrantRecord, memoryStore } from "./auth/store.js";
 import type { IdentityAdapter, Principal } from "./auth/types.js";
 import { isOriginAllowed } from "./origin.js";
 import { createCallPipeline } from "./pipeline.js";
+import type { QueryableAuditSink } from "./plugins/audit-log.js";
 import { assertValidPlugins, type UsherPlugin } from "./plugins/types.js";
 import { createMcpSurface } from "./surfaces/mcp.js";
+import { type AnyUsherTool, assertValidTools, toolScope } from "./tool.js";
 import { createAccountApi } from "./ui/account.js";
-import { ELEMENTS_SCRIPT } from "./ui/elements.js";
+import { ELEMENTS_SCRIPT } from "./ui/elements-script.js";
 import { resolveTheme, type UsherTheme } from "./ui/theme.js";
-import type { QueryableAuditSink } from "./plugins/audit-log.js";
-import { assertValidTools, toolScope, type AnyUsherTool } from "./tool.js";
 
-export { memoryStore } from "./auth/store.js";
 export type {
   AuthStore,
   ClientRecord,
@@ -21,56 +20,57 @@ export type {
   GrantRecord,
   TokenRecord,
 } from "./auth/store.js";
+export { memoryStore } from "./auth/store.js";
 export type { IdentityAdapter, Principal, UsherUser } from "./auth/types.js";
 export { checkDeployment, type DeploymentCheck } from "./doctor.js";
 export { ToolError } from "./errors.js";
-export { httpIdentity, webhookTool, verifyWebhook, type HttpIdentityOptions, type WebhookToolOptions } from "./remote.js";
-export { toRouteHandlers, type RouteHandlers } from "./route-handlers.js";
-export type { UsherTheme } from "./ui/theme.js";
-export type { AgentView } from "./ui/account.js";
 export type { CallResult } from "./pipeline.js";
 export {
-  postgresExecutor,
-  schemaSql,
-  sqlStorage,
-  sqliteExecutor,
-  type SqlExecutor,
-  type SqlStorageOptions,
-} from "./storage/sql.js";
-export {
-  auditLog,
-  memoryAuditSink,
   type AuditLogOptions,
   type AuditQuery,
   type AuditSink,
+  auditLog,
+  memoryAuditSink,
   type QueryableAuditSink,
 } from "./plugins/audit-log.js";
-export { killSwitch, type KillSwitchOptions } from "./plugins/kill-switch.js";
+export { type KillSwitchOptions, killSwitch } from "./plugins/kill-switch.js";
 export {
   memoryRateLimitStore,
-  rateLimit,
   type RateLimitOptions,
-  type RateLimitStore,
   type RateLimitRule,
+  type RateLimitStore,
+  rateLimit,
 } from "./plugins/rate-limit.js";
 export {
-  definePlugin,
   type AgentInfo,
   type CallInfo,
   type CallOutcome,
+  definePlugin,
   type PluginDenial,
   type UsherEvent,
   type UsherPlugin,
 } from "./plugins/types.js";
+export { type HttpIdentityOptions, httpIdentity, verifyWebhook, type WebhookToolOptions, webhookTool } from "./remote.js";
+export { type RouteHandlers, toRouteHandlers } from "./route-handlers.js";
 export type { InferInput, InferOutput, UsherSchema } from "./schema.js";
 export {
-  defineTool,
+  postgresExecutor,
+  type SqlExecutor,
+  type SqlStorageOptions,
+  schemaSql,
+  sqliteExecutor,
+  sqlStorage,
+} from "./storage/sql.js";
+export {
   type AnyUsherTool,
+  defineTool,
   type ToolContext,
-  toolScope,
   type ToolEffect,
+  toolScope,
   type UsherTool,
 } from "./tool.js";
+export type { AgentView } from "./ui/account.js";
+export type { UsherTheme } from "./ui/theme.js";
 
 export interface UsherOptions {
   /** The actions agents may perform in your app. */
@@ -163,7 +163,9 @@ export function createUsher(options: UsherOptions): Usher {
   }
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
   if (!options.store && env?.NODE_ENV === "production") {
-    console.warn("[usher] Using the in-memory store in production: connected agents are lost on restart. Use `store: sqlStorage(db).store`.");
+    console.warn(
+      "[usher] Using the in-memory store in production: connected agents are lost on restart. Use `store: sqlStorage(db).store`.",
+    );
   }
 
   const onError =
@@ -250,10 +252,7 @@ export function createUsher(options: UsherOptions): Usher {
 
       if (pathname === `${basePath}/mcp`) {
         if (!isOriginAllowed(request, allowedOrigins, ownOrigin)) {
-          return Response.json(
-            { jsonrpc: "2.0", error: { code: -32600, message: "Origin not allowed" } },
-            { status: 403 },
-          );
+          return Response.json({ jsonrpc: "2.0", error: { code: -32600, message: "Origin not allowed" } }, { status: 403 });
         }
         const principal = await auth.authenticate(request);
         if (principal instanceof Response) return principal;
@@ -268,13 +267,15 @@ export function createUsher(options: UsherOptions): Usher {
 
       if (pathname === `${basePath}/elements.js`) {
         return new Response(ELEMENTS_SCRIPT, {
-          headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" },
+          headers: {
+            "content-type": "text/javascript; charset=utf-8",
+            "cache-control": "public, max-age=3600",
+            "x-content-type-options": "nosniff",
+          },
         });
       }
       return (
-        (await account.route(request, pathname)) ??
-        (await auth.route(request, pathname)) ??
-        new Response("Not found", { status: 404 })
+        (await account.route(request, pathname)) ?? (await auth.route(request, pathname)) ?? new Response("Not found", { status: 404 })
       );
     },
   };

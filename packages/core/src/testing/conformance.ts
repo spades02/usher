@@ -145,7 +145,16 @@ export function authStoreConformance(): ConformanceCase<AuthStore>[] {
     {
       name: "gives exactly one concurrent consumer the first use",
       async run(s) {
-        const code = { hash: id("code"), grantId: "g", clientId: "c", userId: "u", redirectUri: "r", codeChallenge: "c", resource: "r", expiresAt: 1 };
+        const code = {
+          hash: id("code"),
+          grantId: "g",
+          clientId: "c",
+          userId: "u",
+          redirectUri: "r",
+          codeChallenge: "c",
+          resource: "r",
+          expiresAt: 1,
+        };
         await s.saveCode(code);
         const results = await Promise.all(Array.from({ length: 8 }, () => s.consumeCode(code.hash)));
         same(results.filter((r) => r?.firstUse).length, 1, "exactly one firstUse among concurrent consumers");

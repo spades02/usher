@@ -1,23 +1,12 @@
-import { needsConfirmation, toolScope, type AnyUsherTool } from "../tool.js";
-import {
-  OAuthError,
-  createClientResolver,
-  parseRedirectUris,
-  type MetadataFetch,
-} from "./clients.js";
-import {
-  pageHeaders,
-  renderConfirmPage,
-  renderConsentPage,
-  renderDonePage,
-  renderErrorPage,
-} from "./consent-page.js";
-import { canonicalJson, randomToken, sha256, signPayload, verifyPayload, verifyPkce } from "./crypto.js";
-import type { AuthStore, ClientRecord, ConfirmationRecord, GrantRecord } from "./store.js";
 import type { ConfirmationVerdict } from "../pipeline.js";
 import type { UsherEvent } from "../plugins/types.js";
-import type { IdentityAdapter, Principal, UsherUser } from "./types.js";
+import { type AnyUsherTool, needsConfirmation, toolScope } from "../tool.js";
 import type { ResolvedTheme } from "../ui/theme.js";
+import { createClientResolver, type MetadataFetch, OAuthError, parseRedirectUris } from "./clients.js";
+import { pageHeaders, renderConfirmPage, renderConsentPage, renderDonePage, renderErrorPage } from "./consent-page.js";
+import { canonicalJson, randomToken, sha256, signPayload, verifyPayload, verifyPkce } from "./crypto.js";
+import type { AuthStore, ClientRecord, ConfirmationRecord, GrantRecord } from "./store.js";
+import type { IdentityAdapter, Principal, UsherUser } from "./types.js";
 
 export interface AuthServerOptions {
   appName: string;
@@ -244,7 +233,7 @@ export function createAuthServer(options: AuthServerOptions) {
     const form = new URLSearchParams(await request.text());
     // ...and carry a signed token bound to the signed-in user and the exact request.
     const consent = await verifyPayload<ConsentPayload>(secret, form.get("consent_token") ?? "");
-    if (!consent || consent.k !== "consent" || consent.exp < now()) {
+    if (consent?.k !== "consent" || consent.exp < now()) {
       return errorPage("This approval page has expired. Start connecting the agent again.");
     }
     const user = await identity.getUser(request);
@@ -396,7 +385,7 @@ export function createAuthServer(options: AuthServerOptions) {
     }
     const method = body.token_endpoint_auth_method;
     if (method !== undefined && method !== "none") {
-      return oauthError("invalid_client_metadata", "Only public clients (token_endpoint_auth_method \"none\") are supported");
+      return oauthError("invalid_client_metadata", 'Only public clients (token_endpoint_auth_method "none") are supported');
     }
     let redirectUris: string[];
     try {
@@ -447,7 +436,7 @@ export function createAuthServer(options: AuthServerOptions) {
     if (!match?.[1]) return unauthorized(u);
 
     const record = await store.getToken(await sha256(match[1]));
-    if (!record || record.kind !== "access" || record.expiresAt < now()) return unauthorized(u, true);
+    if (record?.kind !== "access" || record.expiresAt < now()) return unauthorized(u, true);
     // Audience binding (RFC 8707): only tokens minted for this endpoint are accepted.
     if (!sameResource(record.resource, u.resource)) return unauthorized(u, true);
     const grant = await store.getGrant(record.grantId);
@@ -538,11 +527,15 @@ export function createAuthServer(options: AuthServerOptions) {
     if (!user) return redirect(identity.loginUrl(request.url));
     if (user.id !== confirmation.userId) return errorPage("This approval belongs to a different account.", 403, "Wrong account");
     const grant = await store.getGrant(confirmation.grantId);
-    if (!grant || grant.revokedAt) return errorPage("This agent was disconnected, so it can't take this action.", 410, "Agent disconnected");
+    if (!grant || grant.revokedAt)
+      return errorPage("This agent was disconnected, so it can't take this action.", 410, "Agent disconnected");
     const tool = toolsByName.get(confirmation.tool);
     if (!tool) return errorPage("This action is no longer available.", 410, "Nothing to approve");
     if (confirmation.status !== "pending") {
-      return done(confirmation.status === "approved" ? "Already approved" : "Already declined", "You can close this page and go back to your agent.");
+      return done(
+        confirmation.status === "approved" ? "Already approved" : "Already declined",
+        "You can close this page and go back to your agent.",
+      );
     }
     return { confirmation, grant, tool, user };
   }
@@ -577,7 +570,7 @@ export function createAuthServer(options: AuthServerOptions) {
     if (origin !== null && origin !== u.origin) return errorPage("Request blocked.", 403, "Request blocked");
     const form = new URLSearchParams(await request.text());
     const token = await verifyPayload<ConfirmPayload>(secret, form.get("confirm_token") ?? "");
-    if (!token || token.k !== "confirm" || token.id !== id || token.exp < now()) {
+    if (token?.k !== "confirm" || token.id !== id || token.exp < now()) {
       return errorPage("This approval page has expired. Ask your agent to try again.", 400, "Page expired");
     }
     const user = await identity.getUser(request);
@@ -639,9 +632,7 @@ export function createAuthServer(options: AuthServerOptions) {
 
     if (isMetadata) {
       if (method !== "GET") return methodNotAllowed();
-      return isResourceMetadata
-        ? protectedResourceMetadata(u)
-        : authorizationServerMetadata(u);
+      return isResourceMetadata ? protectedResourceMetadata(u) : authorizationServerMetadata(u);
     }
 
     try {

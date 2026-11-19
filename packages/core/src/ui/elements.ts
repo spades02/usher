@@ -11,7 +11,7 @@
  * Every value from the server is written with `textContent` or as a
  * property, never as HTML. Agent names are chosen by agents.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: a browser Window, or a test DOM's; typed loosely so this file needs no DOM-library types
 export function installUsherElements(win: any): void {
   if (!win?.customElements || win.customElements.get("usher-agents")) return;
   const doc = win.document;
@@ -67,6 +67,7 @@ export function installUsherElements(win: any): void {
     .actions { margin-top: 12px; }
     .status:empty { display: none; }`;
 
+  // biome-ignore lint/suspicious/noExplicitAny: server JSON, read defensively
   type Json = Record<string, any>;
 
   function api(el: HTMLElement, path: string, init: { method?: string; body?: unknown } = {}): Promise<Response> {
@@ -125,7 +126,10 @@ export function installUsherElements(win: any): void {
     },
     cursor: {
       label: "Cursor",
-      steps: ["Use the button below, or add the URL above as a remote MCP server in Cursor's settings.", "Sign in to {app} when Cursor asks."],
+      steps: [
+        "Use the button below, or add the URL above as a remote MCP server in Cursor's settings.",
+        "Sign in to {app} when Cursor asks.",
+      ],
       link: (name, url) => ({
         href: `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent(name)}&config=${win.btoa(JSON.stringify({ url }))}`,
         text: "Add to Cursor",
@@ -179,7 +183,13 @@ export function installUsherElements(win: any): void {
       if (!agents.includes(this.selected)) this.selected = agents[0]!;
       const guide = GUIDES[this.selected]!;
 
-      const field = h("input", { type: "text", readOnly: true, value: url, "aria-label": "Connection URL", part: "url" }) as HTMLInputElement;
+      const field = h("input", {
+        type: "text",
+        readOnly: true,
+        value: url,
+        "aria-label": "Connection URL",
+        part: "url",
+      }) as HTMLInputElement;
       const copy = h(
         "button",
         {
@@ -220,7 +230,11 @@ export function installUsherElements(win: any): void {
       const link = guide.link?.(app, url);
       this.render(
         h("h2", { part: "title" }, `Connect your AI assistant to ${app}`),
-        h("p", { className: "muted" }, "Use the assistant you already have. It will ask you to sign in and choose what it may do. You can disconnect it at any time."),
+        h(
+          "p",
+          { className: "muted" },
+          "Use the assistant you already have. It will ask you to sign in and choose what it may do. You can disconnect it at any time.",
+        ),
         h("div", { className: "row" }, h("div", { className: "grow" }, field), copy),
         tabs,
         h("ol", { role: "tabpanel" }, ...guide.steps.map((s) => h("li", {}, s.split("{app}").join(app)))),
@@ -310,7 +324,7 @@ export function installUsherElements(win: any): void {
       const boxes: HTMLInputElement[] = [];
       const save = async () => {
         const scopes = boxes.filter((b) => b.checked).map((b) => b.value);
-        boxes.forEach((b) => (b.disabled = true));
+        for (const b of boxes) b.disabled = true;
         try {
           const res = await api(self, `agents/${encodeURIComponent(agent.id)}`, { method: "PUT", body: { scopes } });
           if (!res.ok) throw new Error(String(res.status));
@@ -318,17 +332,22 @@ export function installUsherElements(win: any): void {
           this.say(`Saved. ${agent.name} can use ${agent.scopes.length} of ${tools.length} actions.`);
           emit(self, "usher-change", { agent });
         } catch {
-          boxes.forEach((b) => (b.checked = agent.scopes.includes(b.value)));
+          for (const b of boxes) b.checked = agent.scopes.includes(b.value);
           this.say("Couldn't save that change. Try again.");
         } finally {
-          boxes.forEach((b) => (b.disabled = false));
+          for (const b of boxes) b.disabled = false;
         }
       };
       const list = h(
         "ul",
         { part: "tools" },
         ...tools.map((tool: Json) => {
-          const box = h("input", { type: "checkbox", value: tool.scope, checked: agent.scopes.includes(tool.scope), onchange: save }) as HTMLInputElement;
+          const box = h("input", {
+            type: "checkbox",
+            value: tool.scope,
+            checked: agent.scopes.includes(tool.scope),
+            onchange: save,
+          }) as HTMLInputElement;
           boxes.push(box);
           return h(
             "li",
@@ -342,7 +361,11 @@ export function installUsherElements(win: any): void {
                 {},
                 h("strong", {}, tool.title),
                 " ",
-                h("span", { className: `muted ${tool.effect}` }, `${EFFECT[tool.effect] ?? tool.effect}${tool.asksFirst ? " · asks you first" : ""}`),
+                h(
+                  "span",
+                  { className: `muted ${tool.effect}` },
+                  `${EFFECT[tool.effect] ?? tool.effect}${tool.asksFirst ? " · asks you first" : ""}`,
+                ),
                 h("br"),
                 h("span", { className: "muted" }, tool.description),
               ),
@@ -369,7 +392,9 @@ export function installUsherElements(win: any): void {
                   const res = await api(self, `activity?agent=${encodeURIComponent(agent.id)}&limit=10`);
                   const { events } = (await res.json()) as Json;
                   activity.replaceChildren(
-                    ...(events.length ? events.map((ev: Json) => h("li", { className: "muted" }, describe(ev))) : [h("li", { className: "muted" }, "No activity yet.")]),
+                    ...(events.length
+                      ? events.map((ev: Json) => h("li", { className: "muted" }, describe(ev)))
+                      : [h("li", { className: "muted" }, "No activity yet.")]),
                   );
                 } catch {
                   activity.replaceChildren(h("li", { className: "muted" }, "Couldn't load activity."));
@@ -425,6 +450,3 @@ export function installUsherElements(win: any): void {
   win.customElements.define("usher-connect", UsherConnect);
   win.customElements.define("usher-agents", UsherAgents);
 }
-
-/** The same code as a classic script, served at `{basePath}/elements.js` for any backend. */
-export const ELEMENTS_SCRIPT = `/* Usher elements (ADR 0009) */\n(${installUsherElements.toString()})(window);\n`;

@@ -1,9 +1,4 @@
-import {
-  CLIENT_CAPABILITIES_META_KEY,
-  McpServer,
-  createMcpHandler,
-  inputRequired,
-} from "@modelcontextprotocol/server";
+import { CLIENT_CAPABILITIES_META_KEY, createMcpHandler, inputRequired, McpServer } from "@modelcontextprotocol/server";
 import type { Principal } from "../auth/types.js";
 import { GENERIC_TOOL_FAILURE } from "../errors.js";
 import type { CallResult } from "../pipeline.js";
@@ -54,9 +49,8 @@ export function createMcpSurface(options: McpSurfaceOptions) {
             if (!requestInfo || !principal) throw new Error("[usher] Unauthenticated tool call");
             const result = await run(requestInfo, principal, tool, args, ctx.mcpReq.signal);
             if (result.kind === "ok") return toCallToolResult(result.value);
-            const envelope = ctx.mcpReq.envelope as Record<string, any> | undefined;
-            const supportsUrlElicitation =
-              era === "modern" && envelope?.[CLIENT_CAPABILITIES_META_KEY]?.elicitation?.url !== undefined;
+            const envelope = ctx.mcpReq.envelope as Record<string, { elicitation?: { url?: unknown } } | undefined> | undefined;
+            const supportsUrlElicitation = era === "modern" && envelope?.[CLIENT_CAPABILITIES_META_KEY]?.elicitation?.url !== undefined;
             const retried = ctx.mcpReq.inputResponses?.[CONFIRM_KEY] !== undefined;
             return toErrorResult(result, supportsUrlElicitation && !retried);
           },
@@ -101,7 +95,11 @@ function toErrorResult(decision: Exclude<CallResult, { kind: "ok" }>, useElicita
         ...(decision.retryAfterSeconds !== undefined ? { retry_after_seconds: decision.retryAfterSeconds } : {}),
       });
     case "forbidden":
-      return error({ error: "The customer hasn't allowed this agent to use this tool.", code: "insufficient_scope", scope: decision.scope });
+      return error({
+        error: "The customer hasn't allowed this agent to use this tool.",
+        code: "insufficient_scope",
+        scope: decision.scope,
+      });
     case "declined":
       return error({ error: "The customer declined this action. Don't retry unless they ask again.", code: "confirmation_declined" });
     case "confirm":

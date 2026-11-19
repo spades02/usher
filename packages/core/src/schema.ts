@@ -15,9 +15,7 @@ interface StandardTypedProps<Input, Output> {
 }
 
 interface StandardValidateProps<Input, Output> extends StandardTypedProps<Input, Output> {
-  readonly validate: (
-    value: unknown,
-  ) => StandardResult<Output> | Promise<StandardResult<Output>>;
+  readonly validate: (value: unknown) => StandardResult<Output> | Promise<StandardResult<Output>>;
 }
 
 type StandardResult<Output> =
@@ -33,26 +31,17 @@ interface StandardJsonSchemaProps<Input, Output> extends StandardTypedProps<Inpu
 
 /** A schema Usher can both validate with and describe to agents as JSON Schema. */
 export interface UsherSchema<Input = unknown, Output = Input> {
-  readonly "~standard": StandardValidateProps<Input, Output> &
-    StandardJsonSchemaProps<Input, Output>;
+  readonly "~standard": StandardValidateProps<Input, Output> & StandardJsonSchemaProps<Input, Output>;
 }
 
 export type InferInput<S extends UsherSchema> = NonNullable<S["~standard"]["types"]>["input"];
 export type InferOutput<S extends UsherSchema> = NonNullable<S["~standard"]["types"]>["output"];
 
-export function toJsonSchema(
-  schema: UsherSchema,
-  io: "input" | "output",
-): Record<string, unknown> {
+export function toJsonSchema(schema: UsherSchema, io: "input" | "output"): Record<string, unknown> {
   return schema["~standard"].jsonSchema[io]({ target: "draft-2020-12" });
 }
 
 export function isUsherSchema(value: unknown): value is UsherSchema {
   const std = (value as UsherSchema | undefined)?.["~standard"];
-  return (
-    typeof std === "object" &&
-    std !== null &&
-    typeof std.validate === "function" &&
-    typeof std.jsonSchema?.input === "function"
-  );
+  return typeof std === "object" && std !== null && typeof std.validate === "function" && typeof std.jsonSchema?.input === "function";
 }

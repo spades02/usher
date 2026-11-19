@@ -21,12 +21,20 @@ export type { IdentityAdapter, Principal, UsherUser } from "./auth/types.js";
 export { ToolError } from "./errors.js";
 export type { CallResult } from "./pipeline.js";
 export {
+  postgresExecutor,
+  schemaSql,
+  sqlStorage,
+  sqliteExecutor,
+  type SqlExecutor,
+  type SqlStorageOptions,
+} from "./storage/sql.js";
+export {
   auditLog,
   memoryAuditSink,
   type AuditLogOptions,
   type AuditQuery,
   type AuditSink,
-  type MemoryAuditSink,
+  type QueryableAuditSink,
 } from "./plugins/audit-log.js";
 export { killSwitch, type KillSwitchOptions } from "./plugins/kill-switch.js";
 export {
@@ -70,7 +78,7 @@ export interface UsherOptions {
    * request, which is wrong behind some proxies.
    */
   baseUrl?: string;
-  /** Persistence for grants and tokens. Default: in-memory (development only). */
+  /** Persistence for grants, tokens and approvals, e.g. `sqlStorage(db).store`. Default: in-memory (development only). */
   store?: AuthStore;
   /** Guidance for agents on how to use your tools. */
   instructions?: string;
@@ -132,7 +140,7 @@ export function createUsher(options: UsherOptions): Usher {
   }
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
   if (!options.store && env?.NODE_ENV === "production") {
-    console.warn("[usher] Using the in-memory store in production: connected agents are lost on restart.");
+    console.warn("[usher] Using the in-memory store in production: connected agents are lost on restart. Use `store: sqlStorage(db).store`.");
   }
 
   const onError =

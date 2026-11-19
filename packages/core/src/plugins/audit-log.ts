@@ -13,23 +13,25 @@ export interface AuditQuery {
   limit?: number;
 }
 
-export interface MemoryAuditSink extends AuditSink {
-  /** Newest first. Use it to show a customer what their agents did. */
-  list(query?: AuditQuery): UsherEvent[];
+/** A sink you can read back, e.g. for a customer's "activity" view. */
+export interface QueryableAuditSink extends AuditSink {
+  /** Newest first. */
+  list(query?: AuditQuery): Promise<UsherEvent[]>;
 }
+
 
 /**
  * In-memory audit sink for development and tests. It keeps the newest `max`
- * events and loses everything on restart. Phase 6 adds durable sinks.
+ * events and loses everything on restart. Use `sqlStorage(...).auditSink` in production.
  */
-export function memoryAuditSink({ max = 10_000 }: { max?: number } = {}): MemoryAuditSink {
+export function memoryAuditSink({ max = 10_000 }: { max?: number } = {}): QueryableAuditSink {
   const events: UsherEvent[] = [];
   return {
     write(event) {
       events.push(event);
       if (events.length > max) events.splice(0, events.length - max);
     },
-    list({ userId, grantId, type, limit = 100 } = {}) {
+    async list({ userId, grantId, type, limit = 100 } = {}) {
       const out: UsherEvent[] = [];
       for (let i = events.length - 1; i >= 0 && out.length < limit; i--) {
         const e = events[i]!;

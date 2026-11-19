@@ -97,7 +97,7 @@ describe("auditLog", () => {
     expect((await callTool(usher, accessToken, "list_orders", {})).status).toBe(403);
     await usher.grants.revoke("user_1", grant!.id);
 
-    const events = sink.list({ userId: "user_1" }).reverse();
+    const events = (await sink.list({ userId: "user_1" })).reverse();
     expect(events.map((e) => (e.type === "call" ? `call:${e.tool}:${e.outcome}${e.code ? `:${e.code}` : ""}` : e.type))).toEqual([
       "grant.created",
       "call:list_orders:success",
@@ -145,7 +145,7 @@ describe("auditLog", () => {
     await fetchToken(refresh);
     await fetchToken(refresh); // replay
 
-    expect(sink.list().map((e) => e.type === "grant.revoked" && [e.userId, e.reason])).toEqual([
+    expect((await sink.list()).map((e) => e.type === "grant.revoked" && [e.userId, e.reason])).toEqual([
       ["user_2", "token_replay"],
       ["user_1", "agent"],
     ]);
@@ -156,10 +156,10 @@ describe("auditLog", () => {
     const { usher } = makeShop([auditLog({ sink, events: ["call"] })]);
     const { accessToken } = await authorizeAgent(usher);
     for (const id of ["a", "b", "c", "d"]) await call(usher, accessToken, "track", { id });
-    const tracked = sink.list();
+    const tracked = (await sink.list());
     expect(tracked).toHaveLength(3); // capped at max
     expect(tracked.every((e) => e.type === "call")).toBe(true);
-    expect(sink.list({ limit: 1 })[0]).toHaveProperty("inputHash", await sha256(JSON.stringify({ id: "d" })));
+    expect((await sink.list({ limit: 1 }))[0]).toHaveProperty("inputHash", await sha256(JSON.stringify({ id: "d" })));
   });
 });
 
@@ -229,7 +229,7 @@ describe("plugin contract", () => {
     expect(ok.result.structuredContent).toEqual({ orders: ["o_1"] });
     expect(onError).toHaveBeenCalledWith(expect.any(Error), { plugin: "flaky-log" });
     // The next observer still received the event.
-    expect(sink.list({ type: "call" })).toHaveLength(1);
+    expect((await sink.list({ type: "call" }))).toHaveLength(1);
   });
 
   it("rejects malformed plugins at startup", () => {

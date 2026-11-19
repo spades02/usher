@@ -8,7 +8,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/conformance.d.ts",
+      "import": "./dist/testing/conformance.js"
     }
+  },
+  "bin": {
+    "usherjs": "./dist/cli.js"
   },
   "files": [
     "dist"
@@ -25,6 +32,7 @@
     "zod": "^4.2.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.3.4",
     "@modelcontextprotocol/client": "2.4.0",
     "typescript": "5.9.3",
     "vitest": "3.2.4",

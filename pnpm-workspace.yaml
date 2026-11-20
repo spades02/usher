@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "apps/*"
 
 # Dependencies allowed to run install scripts (pnpm blocks all others).
 # embedded-postgres only re-creates symlinks inside its own binaries; esbuild verifies its binary.

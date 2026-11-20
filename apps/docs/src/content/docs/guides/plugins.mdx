@@ -1,0 +1,45 @@
+---
+title: Plugins
+description: Audit logs, rate limits, kill switches, and your own rules.
+---
+
+import { Code } from "@astrojs/starlight/components";
+import plugin from "../../../../snippets/plugin.ts?raw";
+
+Plugins run at fixed points of every call:
+
+```text
+authenticate → scope check → beforeCall → approval → handler → onEvent
+```
+
+They can **only restrict**. Usher's own checks run first, so no plugin can
+let through a call the customer didn't allow. If `beforeCall` throws, the
+call is denied. If `onEvent` throws, the error goes to `onError` and the call
+is unaffected. Order matters: the first plugin to deny wins.
+
+## Built in
+
+```ts
+import { auditLog, killSwitch, rateLimit } from "usherjs";
+
+plugins: [
+  auditLog({ sink: storage.auditSink }),
+  rateLimit({ limit: 60, windowSeconds: 60, store: storage.rateLimitStore }), // per connected agent
+  killSwitch({ isBlocked: (call) => flags.agentsDisabled || (call.tool.effect === "destructive" && flags.readOnly) }),
+]
+```
+
+- **`auditLog`** records every call (tool, outcome, duration, input *hash*)
+  and every connection change.
+- **`rateLimit`** limits per grant. Agents get `rate_limited` with
+  `retry_after_seconds`. Use `tools` to limit only some tools, and several
+  instances for several rules.
+- **`killSwitch`** denies with `disabled`. Return a string to tell the agent
+  why.
+
+## Your own
+
+<Code code={plugin} lang="ts" title="office-hours.ts" />
+
+A denial's `message` and `code` reach the agent, so it can tell the customer
+what happened. Events never include tool inputs.

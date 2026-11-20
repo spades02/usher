@@ -73,8 +73,11 @@ export type UsherEvent =
   | (EventBase & { type: "grant.updated"; scopes: string[] })
   | (EventBase & {
       type: "grant.revoked";
-      /** `customer`: disconnected in the app. `agent`: the agent revoked its token. `token_replay`: a stolen token was detected. */
-      reason: "customer" | "agent" | "token_replay";
+      /**
+       * `customer`: disconnected in the app. `agent`: the agent revoked its token.
+       * `token_replay`: a stolen token was detected. `operator`: the app's staff disconnected it from the console.
+       */
+      reason: "customer" | "agent" | "token_replay" | "operator";
     })
   | (EventBase & { type: "confirmation.decided"; tool: string; summary: string; approved: boolean });
 

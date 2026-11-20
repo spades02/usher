@@ -1,0 +1,57 @@
+---
+title: Getting started
+description: Add Usher to an app, connect an assistant, and see your first tool call.
+---
+
+import { Code, Steps } from "@astrojs/starlight/components";
+import tools from "../../../snippets/tools.ts?raw";
+import usher from "../../../snippets/usher.ts?raw";
+import nextRoute from "../../../snippets/next-route.ts?raw";
+
+:::note[Every sample on this site runs]
+The code on these pages lives in the docs' `snippets/` folder. It's
+type-checked against the current release, and the quickstart is run end to
+end in CI: an agent connects and calls the tools below.
+:::
+
+<Steps>
+
+1. **Install.** Usher needs Node 22.13+ and works with any [Standard Schema](https://standardschema.dev) library. Zod 4 is shown here.
+
+   ```sh
+   npm install usherjs zod
+   ```
+
+2. **Define tools.** These are the actions an agent may take for a customer. `effect` is required: `read`, `write` or `destructive`. Destructive tools ask the customer to approve each call.
+
+   <Code code={tools} lang="ts" title="tools.ts" />
+
+3. **Create Usher.** Bridge it to your login, give it your database, and pick the guardrails.
+
+   <Code code={usher} lang="ts" title="usher.ts" />
+
+   `USHER_SECRET` signs consent and approval forms. Generate one with `openssl rand -base64 32`.
+
+4. **Mount it.** Usher serves `/api/usher/*`, plus two discovery documents under `/.well-known/`. In Next.js, that's two route files with the same content:
+
+   <Code code={nextRoute} lang="ts" title="app/api/usher/[...usher]/route.ts" />
+
+   Other frameworks: see [Frameworks](/guides/frameworks/).
+
+5. **Check the deployment** the way an agent will see it:
+
+   ```sh
+   npx usherjs doctor https://your-app.example
+   ```
+
+6. **Connect an assistant.** In Claude, ChatGPT or Cursor, add a custom connector with the URL `https://your-app.example/api/usher/mcp`. You'll be sent to your own login, then to a consent page listing your tools. Ask the assistant to list your orders.
+
+   To show customers how, drop [`<usher-connect>`](/guides/customer-ui/) on a help page.
+
+</Steps>
+
+## Next
+
+- [How it works](/concepts/how-it-works/): what happens between "add connector" and the first tool call.
+- [Customer UI](/guides/customer-ui/): the "Connected agents" settings page.
+- [Security model](/concepts/security/): what Usher guarantees, and what stays your job.

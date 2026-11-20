@@ -63,6 +63,8 @@ export const standaloneConfigSchema = z.object({
   allowedOrigins: z.array(z.string()).optional(),
   /** Branding for consent and approval pages (ADR 0009). Validated when the server starts. */
   theme: z.record(z.string(), z.unknown()).optional(),
+  /** User ids (as your session endpoint reports them) who may open the operator console at {basePath}/console (ADR 0011). */
+  operators: z.array(z.string()).optional(),
   port: z.number().int().min(0).max(65535).optional(),
 });
 
@@ -169,6 +171,9 @@ export async function createStandaloneServer(input: StandaloneConfig): Promise<S
     theme: config.theme as UsherTheme | undefined,
     // <usher-agents> on the app's pages shows the audit trail to each customer.
     account: { activity: storage.auditSink },
+    console: config.operators?.length
+      ? { isOperator: (user) => config.operators!.includes(user.id), events: storage.auditSink }
+      : undefined,
     identity: httpIdentity(config.identity),
     store: storage.store,
     tools,

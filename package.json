@@ -10,8 +10,9 @@
     "lint": "biome ci --error-on-warnings .",
     "format": "biome check --write .",
     "changeset": "changeset",
-    "verify": "pnpm lint && pnpm typecheck && pnpm build && pnpm -r api:check && pnpm -r check:package && pnpm test",
-    "release": "pnpm build && pnpm -r api:check && pnpm -r check:package && changeset publish"
+    "verify": "pnpm lint && pnpm build && pnpm typecheck && pnpm -r api:check && pnpm -r check:package && pnpm test",
+    "release": "pnpm --filter usherjs build && pnpm -r api:check && pnpm -r check:package && changeset publish",
+    "docs": "pnpm --filter usherjs build && pnpm --filter @usher/docs dev"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",

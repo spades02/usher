@@ -365,6 +365,7 @@ function standaloneConfig(appPort: number): StandaloneConfig {
     webhookSecret: WEBHOOK_SECRET,
     adminToken: ADMIN_TOKEN,
     theme: { accentColor: "#0a7a55", links: { accountSettings: "/account/agents" } },
+    operators: ["staff_1"],
     identity: { sessionUrl: `http://127.0.0.1:${appPort}/usher/session`, loginUrl: `${BASE}/login?next={returnTo}` },
     tools: [
       { name: "list_orders", description: "List orders.", effect: "read", input: { type: "object", properties: {} }, url: hook("orders") },
@@ -461,6 +462,11 @@ describe("usherjs serve (standalone, for apps not written in JS)", () => {
       new Request(`${BASE}/api/usher/account/agents`, { headers: { cookie: "session=user_1", "x-usher-request": "1" } }),
     );
     expect((await res.json()).agents).toHaveLength(1);
+    // The operator console, for the listed staff only.
+    const openConsole = (user: string) =>
+      target.handler(new Request(`${BASE}/api/usher/console`, { headers: { cookie: `session=${user}` } }));
+    expect((await openConsole("user_1")).status).toBe(403);
+    expect(await (await openConsole("staff_1")).text()).toContain("Rails Shop");
     await expect(createStandaloneServer({ ...standaloneConfig(1), theme: { logoUrl: "javascript:x" } })).rejects.toThrow(/logoUrl/);
   });
 

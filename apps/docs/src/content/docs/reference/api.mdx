@@ -1,0 +1,25 @@
+---
+title: API reference
+description: Every public export of every entry point, generated from the published type definitions.
+---
+
+import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
+import main from "../../../../../../packages/core/api/usherjs.api.md?raw";
+import node from "../../../../../../packages/core/api/usherjs__node.api.md?raw";
+import standalone from "../../../../../../packages/core/api/usherjs__standalone.api.md?raw";
+import elements from "../../../../../../packages/core/api/usherjs__elements.api.md?raw";
+import testing from "../../../../../../packages/core/api/usherjs__testing.api.md?raw";
+
+export const ts = (report) => report.split("```ts\n")[1]?.split("\n```")[0] ?? report;
+
+These are the same reports CI checks on every change (ADR 0010). If it's
+not here, it's not public API. Doc comments are in the type definitions, so
+your editor shows them.
+
+<Tabs>
+  <TabItem label="usherjs"><Code code={ts(main)} lang="ts" /></TabItem>
+  <TabItem label="usherjs/node"><Code code={ts(node)} lang="ts" /></TabItem>
+  <TabItem label="usherjs/standalone"><Code code={ts(standalone)} lang="ts" /></TabItem>
+  <TabItem label="usherjs/elements"><Code code={ts(elements)} lang="ts" /></TabItem>
+  <TabItem label="usherjs/testing"><Code code={ts(testing)} lang="ts" /></TabItem>
+</Tabs>

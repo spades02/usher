@@ -1,0 +1,62 @@
+---
+title: Frameworks
+description: Mount Usher in Next.js, SvelteKit, Express, Hono, Bun, Workers and more.
+---
+
+import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
+import nextRoute from "../../../../snippets/next-route.ts?raw";
+import express from "../../../../snippets/express.ts?raw";
+import fetchServer from "../../../../snippets/fetch-server.ts?raw";
+
+Usher is one web-standard `handler(Request) → Response`. It must receive:
+
+- everything under **`/api/usher/*`** (your `basePath`), and
+- **`/.well-known/oauth-protected-resource/*`** and
+  **`/.well-known/oauth-authorization-server/*`**, which agents look up at
+  your origin's root.
+
+`usher.matches(pathname)` tells you whether a path is Usher's. Other
+`/.well-known` files (Apple, Android, `security.txt`) are never claimed.
+
+<Tabs>
+  <TabItem label="Next.js">
+    Two route files with the same content:
+    `app/api/usher/[...usher]/route.ts` and `app/.well-known/[...usher]/route.ts`.
+    <Code code={nextRoute} lang="ts" />
+  </TabItem>
+  <TabItem label="SvelteKit / Astro / Remix">
+    The same two routes (`src/routes/api/usher/[...path]/+server.ts` and
+    `src/routes/.well-known/[...path]/+server.ts` in SvelteKit).
+    `toRouteHandlers` accepts the framework's event object as well as a plain
+    `Request`. For Remix and React Router, use `loader = GET` and
+    `action = POST`.
+    <Code code={nextRoute} lang="ts" />
+  </TabItem>
+  <TabItem label="Express / Node">
+    One middleware at the root, from `usherjs/node`. It works with Express,
+    Connect, Polka, NestJS and a bare `http.createServer`. For Fastify, pass
+    `request.raw, reply.raw`, and for Koa, `ctx.req, ctx.res`.
+    <Code code={express} lang="ts" />
+  </TabItem>
+  <TabItem label="Hono / Bun / Deno / Workers">
+    <Code code={fetchServer} lang="ts" />
+  </TabItem>
+</Tabs>
+
+## Behind a proxy
+
+Set `baseUrl` to your public origin, e.g. `https://shop.example`. Usher uses
+it for every URL it advertises, and for its same-origin checks. With
+`usherjs/node`, `trustProxy: true` honors `X-Forwarded-Proto` and
+`X-Forwarded-Host`. Only enable it behind a proxy that sets them.
+
+Then check from the outside:
+
+```sh
+npx usherjs doctor https://shop.example
+```
+
+## Not JavaScript?
+
+Rails, Django, Laravel, Go and .NET apps run Usher as a separate process.
+See [Standalone server](/guides/standalone/).

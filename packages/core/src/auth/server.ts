@@ -74,7 +74,7 @@ export function createAuthServer(options: AuthServerOptions) {
   const grantEvent = (grant: GrantRecord) => ({ at: Date.now(), userId: grant.userId, agent: agentOf(grant), grantId: grant.id });
 
   /** The only way grants are revoked, so every revocation is recorded. */
-  async function revokeGrant(grantId: string, reason: "customer" | "agent" | "token_replay") {
+  async function revokeGrant(grantId: string, reason: "customer" | "agent" | "token_replay" | "operator") {
     const grant = await store.getGrant(grantId);
     if (!grant || grant.revokedAt) return;
     await store.revokeGrant(grantId, now());
@@ -666,6 +666,11 @@ export function createAuthServer(options: AuthServerOptions) {
     authenticate,
     insufficientScope,
     confirmationGate,
+    /** Disconnects a grant on behalf of the app's staff (operator console, ADR 0011). */
+    revokeByOperator: async (userId: string, grantId: string) => {
+      const grant = await store.getGrant(grantId);
+      if (grant && grant.userId === userId) await revokeGrant(grantId, "operator");
+    },
     grants: {
       /** Agents the user has connected (for a "Connected agents" settings page). */
       list: async (userId: string) => (await store.listGrants(userId)).filter((g) => !g.revokedAt),

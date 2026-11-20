@@ -1,0 +1,46 @@
+---
+title: Tools
+description: Define the actions agents may take for your customers.
+---
+
+import { Code } from "@astrojs/starlight/components";
+import tools from "../../../../snippets/tools.ts?raw";
+
+A tool is one action, defined once and served to every assistant over MCP.
+
+<Code code={tools} lang="ts" title="tools.ts" />
+
+## The fields
+
+| Field | |
+|---|---|
+| `name` | Stable identifier, e.g. `list_orders`. The scope is `tool:<name>` (`toolScope(name)`) |
+| `description` | What it does and when to use it. Agents read this to pick tools, so write it for them |
+| `input` | An object schema from any [Standard Schema](https://standardschema.dev) library with JSON Schema support (Zod 4.2+, ArkType, Valibot). It's validated before your handler runs |
+| `output` | Optional. Agents get typed results, and Usher validates what you return |
+| `effect` | **Required.** `read` never changes anything. `write` changes things recoverably. `destructive` is hard or impossible to undo |
+| `confirm` | Ask the customer before each call. Default: `true` for `destructive`. Pass a function to describe the action in plain words on the approval page |
+| `idempotent` | Repeating the call has no extra effect, so agents may retry safely |
+
+## The handler
+
+`handler(input, ctx)` receives the validated input and a context:
+
+- `ctx.user.id`: the customer the agent acts for. **Scope every query to it.**
+- `ctx.agent`: `{ clientId, name, verified }`.
+- `ctx.signal`: aborted when the agent cancels or disconnects. Pass it to
+  `fetch` and database calls.
+- `ctx.request`: the HTTP request that carried the call.
+
+## Errors
+
+Throw `ToolError` for expected business failures. The agent sees the
+message and `code`, and can explain or recover:
+
+```ts
+throw new ToolError("Only open orders can be cancelled.", { code: "not_open" });
+```
+
+Any other error is treated as a bug. The agent gets a generic message, and
+the real error goes to `onError` (default: `console.error`). Stack traces
+and database errors never reach a third-party agent.

@@ -56,6 +56,7 @@ const standaloneConfigSchema: z.ZodObject<{
     }, z.core.$strip>>;
     allowedOrigins: z.ZodOptional<z.ZodArray<z.ZodString>>;
     theme: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    operators: z.ZodOptional<z.ZodArray<z.ZodString>>;
     port: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>;
 

@@ -142,6 +142,11 @@ interface ConfirmationRecord {
     decidedAt?: number;
 }
 
+interface ConsoleOptions {
+    isOperator(user: UsherUser, request: Request): boolean | Promise<boolean>;
+    events: QueryableAuditSink;
+}
+
 interface Consumed<T> {
     record: T;
     firstUse: boolean;
@@ -359,7 +364,7 @@ type UsherEvent = (EventBase & {
     scopes: string[];
 }) | (EventBase & {
     type: "grant.revoked";
-    reason: "customer" | "agent" | "token_replay";
+    reason: "customer" | "agent" | "token_replay" | "operator";
 }) | (EventBase & {
     type: "confirmation.decided";
     tool: string;
@@ -389,6 +394,7 @@ interface UsherOptions {
     account?: {
         activity?: QueryableAuditSink;
     };
+    console?: ConsoleOptions;
     auth?: {
         accessTokenTtl?: number;
         refreshTokenTtl?: number;

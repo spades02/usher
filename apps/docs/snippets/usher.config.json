@@ -1,0 +1,37 @@
+{
+  "app": { "name": "Rails Shop", "version": "2.0.0" },
+  "baseUrl": "https://shop.example",
+  "secret": "env:USHER_SECRET",
+  "database": "env:DATABASE_URL",
+  "identity": {
+    "sessionUrl": "http://rails:3000/usher/session",
+    "loginUrl": "https://shop.example/login?next={returnTo}"
+  },
+  "webhookSecret": "env:USHER_WEBHOOK_SECRET",
+  "adminToken": "env:USHER_ADMIN_TOKEN",
+  "operators": ["staff_1"],
+  "rateLimit": { "limit": 60, "windowSeconds": 60 },
+  "theme": { "accentColor": "#cc0000", "links": { "accountSettings": "/account/agents" } },
+  "tools": [
+    {
+      "name": "list_orders",
+      "description": "List the customer's orders, newest first.",
+      "effect": "read",
+      "input": { "type": "object", "properties": { "status": { "type": "string", "enum": ["open", "shipped"] } } },
+      "url": "http://rails:3000/usher/hooks/list_orders"
+    },
+    {
+      "name": "cancel_order",
+      "description": "Cancel one of the customer's open orders.",
+      "effect": "destructive",
+      "confirm": "Cancel order {orderId}",
+      "input": {
+        "type": "object",
+        "properties": { "orderId": { "type": "string" } },
+        "required": ["orderId"],
+        "additionalProperties": false
+      },
+      "url": "http://rails:3000/usher/hooks/cancel_order"
+    }
+  ]
+}

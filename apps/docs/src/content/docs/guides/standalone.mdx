@@ -1,0 +1,88 @@
+---
+title: Standalone server
+description: Usher for Rails, Django, Laravel, Go and .NET apps.
+---
+
+import { Code, Tabs, TabItem } from "@astrojs/starlight/components";
+import config from "../../../../snippets/usher.config.json?raw";
+import python from "../../../../snippets/verify_webhook.py?raw";
+import ruby from "../../../../snippets/verify_webhook.rb?raw";
+import node from "../../../../snippets/webhook-receiver.ts?raw";
+
+If your app isn't JavaScript, run Usher next to it. It's the same Usher, with
+the same consent, approvals, audit log and storage. Your app provides two
+kinds of endpoint:
+
+1. **A session endpoint** that says who is signed in. Usher forwards the
+   browser's `Cookie` header to it. Return `200 {"id": "...", "name": "...", "email": "..."}`,
+   or `401` when signed out.
+2. **One webhook per tool.** Usher POSTs
+   `{ "tool", "input", "user": { "id" }, "agent" }`, signed with
+   `Usher-Signature`.
+
+<Code code={config} lang="json" title="usher.config.json" />
+
+```sh
+npx usherjs serve usher.config.json   # PORT=8787 by default
+```
+
+`"env:NAME"` values are read from the environment, and a missing one fails
+at boot. `database` is `sqlite:./usher.db` or a `postgres://` URL (install
+`pg`).
+
+## Routing
+
+Put Usher behind your reverse proxy **on your app's domain**, so it receives
+your session cookie:
+
+```nginx
+location /api/usher/ { proxy_pass http://usher:8787; }
+location ~ ^/\.well-known/oauth-(protected-resource|authorization-server) { proxy_pass http://usher:8787; }
+```
+
+Then run `npx usherjs doctor https://shop.example`.
+
+## Webhooks
+
+| Your response | What the agent sees |
+|---|---|
+| `2xx` with JSON | The result |
+| `4xx` with `{"error": "...", "code": "..."}` | Your message and code, a business failure it can explain |
+| `5xx`, timeout or redirect | A generic failure. The details stay in Usher's logs |
+
+Input is validated against your JSON Schema before the webhook fires.
+Validate again on your side anyway.
+
+### Verify every webhook
+
+`Usher-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`.
+Reject anything older than 5 minutes. These samples are tested against real
+Usher signatures in CI:
+
+<Tabs>
+  <TabItem label="Python">
+    <Code code={python} lang="python" title="verify_webhook.py" />
+  </TabItem>
+  <TabItem label="Ruby">
+    <Code code={ruby} lang="ruby" title="verify_webhook.rb" />
+  </TabItem>
+  <TabItem label="Node">
+    <Code code={node} lang="ts" title="webhook.ts" />
+  </TabItem>
+</Tabs>
+
+## Managing connections from your backend
+
+With `adminToken` set, your backend can list, edit and revoke a customer's
+agents and read their activity, for your own settings page:
+
+```text
+GET    /api/usher/admin/users/:userId/grants
+PUT    /api/usher/admin/users/:userId/grants/:grantId/scopes   {"scopes": ["tool:list_orders"]}
+DELETE /api/usher/admin/users/:userId/grants/:grantId
+GET    /api/usher/admin/users/:userId/events?limit=50
+```
+
+Send `Authorization: Bearer <adminToken>`, from your server only. Or embed
+[`<usher-agents>`](/guides/customer-ui/) with `<script src="/api/usher/elements.js">`,
+which needs no backend code.

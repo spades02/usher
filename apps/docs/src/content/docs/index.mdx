@@ -1,0 +1,40 @@
+---
+title: Usher
+description: Let your customers bring their own AI agent.
+template: splash
+hero:
+  tagline: Let your customers connect the AI assistant they already use (ChatGPT, Claude, Cursor or their own) to your app, safely.
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+    - text: How it works
+      link: /concepts/how-it-works/
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+Your support chatbot knows your product. Your customer's own assistant knows
+*them*: their preferences, their history, what they tried yesterday. Usher
+gives that assistant a safe, standard way into your app.
+
+<CardGrid>
+  <Card title="Define tools once" icon="seti:typescript">
+    Typed actions like `list_orders` or `cancel_order`, with the schema
+    library you already use. Usher serves them over MCP to every assistant.
+  </Card>
+  <Card title="Consent your customers understand" icon="approve-check">
+    An OAuth 2.1 server wired into your existing login. Customers tick
+    exactly which tools an agent may use, and can change it at any time.
+  </Card>
+  <Card title="Guardrails built in" icon="warning">
+    Irreversible actions wait for the customer's approval on your site. Audit
+    log, rate limits, a kill switch, and replay detection for stolen tokens.
+  </Card>
+  <Card title="Runs in your app" icon="laptop">
+    A library, not a hosted service. Your database, your domain, your data.
+    Next.js, Express, Hono, SvelteKit, or any backend via the standalone
+    server.
+  </Card>
+</CardGrid>

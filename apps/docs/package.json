@@ -1,0 +1,29 @@
+{
+  "name": "@usher/docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync-adrs.mjs",
+    "dev": "node scripts/sync-adrs.mjs && astro dev",
+    "build": "node scripts/sync-adrs.mjs && astro build && node scripts/check-links.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.snippets.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "7.3.6",
+    "@astrojs/starlight": "0.42.9",
+    "astro": "7.4.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.4",
+    "@types/express": "5.0.3",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.15.6",
+    "express": "5.1.0",
+    "pg": "8.23.1",
+    "typescript": "5.9.3",
+    "usherjs": "workspace:*",
+    "vitest": "3.2.4",
+    "zod": "4.6.7"
+  }
+}

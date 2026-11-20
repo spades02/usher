@@ -8,6 +8,7 @@ import { assertValidPlugins, type UsherPlugin } from "./plugins/types.js";
 import { createMcpSurface } from "./surfaces/mcp.js";
 import { type AnyUsherTool, assertValidTools, toolScope } from "./tool.js";
 import { createAccountApi } from "./ui/account.js";
+import { type ConsoleOptions, createConsole } from "./ui/console.js";
 import { ELEMENTS_SCRIPT } from "./ui/elements-script.js";
 import { resolveTheme, type UsherTheme } from "./ui/theme.js";
 
@@ -70,6 +71,7 @@ export {
   type UsherTool,
 } from "./tool.js";
 export type { AgentView } from "./ui/account.js";
+export type { ConsoleOptions } from "./ui/console.js";
 export type { UsherTheme } from "./ui/theme.js";
 
 export interface UsherOptions {
@@ -113,6 +115,11 @@ export interface UsherOptions {
    * Pass your audit sink to show customers what their agents did.
    */
   account?: { activity?: QueryableAuditSink };
+  /**
+   * The operator console for your staff at `{basePath}/console` (ADR 0011):
+   * agent activity, alerts, and per-customer lookup and disconnect. Off unless set.
+   */
+  console?: ConsoleOptions;
   auth?: {
     /** Access token lifetime in seconds. Default: 3600 (1 hour). */
     accessTokenTtl?: number;
@@ -233,6 +240,22 @@ export function createUsher(options: UsherOptions): Usher {
   const rootPaths = new Set([...RESOURCE_METADATA_PATHS(basePath), ...AUTH_SERVER_METADATA_PATHS(basePath)]);
   const matches = (pathname: string) => pathname.startsWith(`${basePath}/`) || rootPaths.has(pathname);
   const ownOrigin = options.baseUrl ? new URL(options.baseUrl).origin : undefined;
+  if (options.console && typeof options.console.isOperator !== "function") {
+    throw new Error("[usher] `console.isOperator(user)` is required: it decides who may open the console");
+  }
+  const operatorConsole = options.console
+    ? createConsole({
+        basePath,
+        appName: options.app.name,
+        secret: options.secret,
+        ownOrigin,
+        identity: options.identity,
+        theme,
+        options: options.console,
+        listGrants: auth.grants.list,
+        revokeByOperator: auth.revokeByOperator,
+      })
+    : null;
   const account = createAccountApi({
     basePath,
     appName: options.app.name,
@@ -275,7 +298,10 @@ export function createUsher(options: UsherOptions): Usher {
         });
       }
       return (
-        (await account.route(request, pathname)) ?? (await auth.route(request, pathname)) ?? new Response("Not found", { status: 404 })
+        (await operatorConsole?.route(request, pathname)) ??
+        (await account.route(request, pathname)) ??
+        (await auth.route(request, pathname)) ??
+        new Response("Not found", { status: 404 })
       );
     },
   };

@@ -18,8 +18,12 @@ let server: EmbeddedPostgres;
 let pool: pg.Pool;
 let dir: string;
 let n = 0;
+// GitHub's Windows runners run as Administrator, and Postgres refuses to start
+// with admin rights. Linux and macOS CI (and local Windows) run this suite.
+const skip = process.platform === "win32" && !!process.env.CI;
 
 beforeAll(async () => {
+  if (skip) return;
   dir = await mkdtemp(join(tmpdir(), "usher-pg-"));
   const port = 20_000 + Math.floor(Math.random() * 20_000);
   server = new EmbeddedPostgres({ databaseDir: dir, port, user: "usher", password: "usher", persistent: false, onLog: () => {} });
@@ -36,6 +40,7 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
+  if (skip) return;
   await pool?.end();
   // On Windows runners, stop() can wait on the postmaster's exit long after
   // the tests are done. Give it 30 s, then move on: the runner reaps it.
@@ -50,7 +55,7 @@ async function storage() {
 }
 const race = <T>(fn: () => Promise<T>) => Promise.all(Array.from({ length: RACERS }, fn));
 
-describe(`real Postgres, ${RACERS} parallel connections`, () => {
+describe.skipIf(skip)(`real Postgres, ${RACERS} parallel connections`, () => {
   it("concurrent migrate() from many instances on a fresh database", async () => {
     const prefix = `m${n++}_`;
     const results = await race(() => sqlStorage(postgresExecutor(pool), { tablePrefix: prefix }).migrate());

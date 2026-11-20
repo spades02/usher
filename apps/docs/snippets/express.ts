@@ -1,5 +1,5 @@
+import { toNodeHandler } from "@usherjs/core/node";
 import express from "express";
-import { toNodeHandler } from "usherjs/node";
 import { usher } from "./usher.js";
 
 const app = express();

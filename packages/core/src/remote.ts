@@ -1,7 +1,7 @@
 /**
  * Building blocks for running Usher outside the app's process (ADR 0008):
  * identity over HTTP, and tools as signed webhooks. The standalone server
- * (`usherjs serve`) is built from these, and JS apps can mix them in too,
+ * (`npx @usherjs/core serve`) is built from these, and JS apps can mix them in too,
  * e.g. to expose one tool that lives in another service.
  */
 

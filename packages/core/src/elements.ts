@@ -1,5 +1,5 @@
 /**
- * `import "usherjs/elements"` registers <usher-connect> and <usher-agents>
+ * `import "@usherjs/core/elements"` registers <usher-connect> and <usher-agents>
  * in the browser (ADR 0009). Safe to import during server rendering: it does
  * nothing without a `window`.
  */

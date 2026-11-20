@@ -1,4 +1,4 @@
-import { defineTool, ToolError } from "usherjs";
+import { defineTool, ToolError } from "@usherjs/core";
 import { z } from "zod";
 import { orders } from "./session.js";
 

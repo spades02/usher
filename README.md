@@ -53,6 +53,7 @@ Pre-alpha. Built phase by phase; each phase records one architectural decision i
 | 8 | Customer-facing UI | [0009](docs/adr/0009-customer-facing-ui.md) |
 | 9 | Repo & release tooling | [0010](docs/adr/0010-repo-and-release-tooling.md) |
 | 10 | Docs site & operator console | [0011](docs/adr/0011-docs-site-and-operator-console.md) |
+| — | Package name (`@usherjs/core`) | [0012](docs/adr/0012-package-name.md) |
 
 ## Development
 

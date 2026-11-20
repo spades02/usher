@@ -23,7 +23,7 @@ kinds of endpoint:
 <Code code={config} lang="json" title="usher.config.json" />
 
 ```sh
-npx usherjs serve usher.config.json   # PORT=8787 by default
+npx @usherjs/core serve usher.config.json   # PORT=8787 by default
 ```
 
 `"env:NAME"` values are read from the environment, and a missing one fails
@@ -40,7 +40,7 @@ location /api/usher/ { proxy_pass http://usher:8787; }
 location ~ ^/\.well-known/oauth-(protected-resource|authorization-server) { proxy_pass http://usher:8787; }
 ```
 
-Then run `npx usherjs doctor https://shop.example`.
+Then run `npx @usherjs/core doctor https://shop.example`.
 
 ## Webhooks
 

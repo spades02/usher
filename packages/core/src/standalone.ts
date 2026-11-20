@@ -1,5 +1,5 @@
 /**
- * `usherjs/standalone`: Usher as its own process, for apps not written in
+ * `@usherjs/core/standalone`: Usher as its own process, for apps not written in
  * JavaScript (Rails, Django, Laravel, Go, .NET...). See ADR 0008.
  *
  * The app keeps its logic and its login. It exposes:
@@ -264,7 +264,7 @@ function adminApi(usher: Usher, token: string, listEvents: ReturnType<typeof sql
   };
 }
 
-/** `usherjs serve [usher.config.json]`: reads the config, resolves `env:` values, listens. */
+/** `npx @usherjs/core serve [usher.config.json]`: reads the config, resolves `env:` values, listens. */
 export async function serveFromFile(path: string, env: Record<string, string | undefined> = process.env): Promise<StandaloneServer> {
   const raw = JSON.parse(await readFile(path, "utf8")) as StandaloneConfig;
   const standalone = await createStandaloneServer(resolveEnv(raw, env));

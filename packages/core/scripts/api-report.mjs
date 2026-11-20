@@ -47,7 +47,7 @@ const dir = join(root, "api");
 await mkdir(dir, { recursive: true });
 const stale = [];
 for (const entry of entries) {
-  const file = join(dir, `${entry.name.replace("/", "__")}.api.md`);
+  const file = join(dir, `${entry.name.replace(/^@/, "").replaceAll("/", "__")}.api.md`);
   const next = render(entry);
   const current = await readFile(file, "utf8").catch(() => "");
   if (current.replace(/\r\n/g, "\n") === next) continue;
@@ -56,7 +56,7 @@ for (const entry of entries) {
 }
 if (stale.length) {
   console.error(
-    `The public API changed: ${stale.join(", ")}.\nRun \`pnpm --filter usherjs api\`, commit the reports, and add a changeset with the right bump.`,
+    `The public API changed: ${stale.join(", ")}.\nRun \`pnpm --filter @usherjs/core api\`, commit the reports, and add a changeset with the right bump.`,
   );
   process.exit(1);
 }

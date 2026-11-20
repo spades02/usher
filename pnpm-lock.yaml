@@ -45,6 +45,9 @@ importers:
       '@types/pg':
         specifier: 8.15.6
         version: 8.15.6
+      '@usherjs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       express:
         specifier: 5.1.0
         version: 5.1.0
@@ -54,9 +57,6 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
-      usherjs:
-        specifier: workspace:*
-        version: link:../../packages/core
       vitest:
         specifier: 3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@24.10.1)(happy-dom@20.0.10)(lightningcss@1.33.0)(yaml@2.9.1)

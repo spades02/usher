@@ -33,7 +33,7 @@ Usher is one web-standard `handler(Request) → Response`. It must receive:
     <Code code={nextRoute} lang="ts" />
   </TabItem>
   <TabItem label="Express / Node">
-    One middleware at the root, from `usherjs/node`. It works with Express,
+    One middleware at the root, from `@usherjs/core/node`. It works with Express,
     Connect, Polka, NestJS and a bare `http.createServer`. For Fastify, pass
     `request.raw, reply.raw`, and for Koa, `ctx.req, ctx.res`.
     <Code code={express} lang="ts" />
@@ -47,13 +47,13 @@ Usher is one web-standard `handler(Request) → Response`. It must receive:
 
 Set `baseUrl` to your public origin, e.g. `https://shop.example`. Usher uses
 it for every URL it advertises, and for its same-origin checks. With
-`usherjs/node`, `trustProxy: true` honors `X-Forwarded-Proto` and
+`@usherjs/core/node`, `trustProxy: true` honors `X-Forwarded-Proto` and
 `X-Forwarded-Host`. Only enable it behind a proxy that sets them.
 
 Then check from the outside:
 
 ```sh
-npx usherjs doctor https://shop.example
+npx @usherjs/core doctor https://shop.example
 ```
 
 ## Not JavaScript?

@@ -198,7 +198,7 @@ describe("mounting", () => {
 
 // ------------------------------------------------------------ Node / Express
 
-describe("usherjs/node", () => {
+describe("@usherjs/core/node", () => {
   it("Express at the root, after body parsers: full connect, consent and calls; other routes pass through", async () => {
     const usher = makeUsher();
     const app = express();
@@ -382,7 +382,7 @@ function standaloneConfig(appPort: number): StandaloneConfig {
   };
 }
 
-describe("usherjs serve (standalone, for apps not written in JS)", () => {
+describe("@usherjs/core serve (standalone, for apps not written in JS)", () => {
   async function start() {
     const app = await fakeApp();
     const standalone = await createStandaloneServer(standaloneConfig(app.port));

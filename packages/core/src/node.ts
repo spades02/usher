@@ -1,5 +1,5 @@
 /**
- * `usherjs/node`: mounts Usher in Node's `(req, res)` world: Express,
+ * `@usherjs/core/node`: mounts Usher in Node's `(req, res)` world: Express,
  * Connect, Fastify (via `reply.raw`), Koa (`ctx.req`/`ctx.res`), NestJS,
  * Polka, or a bare `http.createServer` (ADR 0008).
  *

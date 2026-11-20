@@ -1,5 +1,5 @@
 {
-  "name": "usherjs",
+  "name": "@usherjs/core",
   "version": "0.1.0",
   "description": "Let your customers bring their own AI agent.",
   "license": "MIT",
@@ -47,6 +47,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
     "typecheck": "tsc --noEmit",

@@ -20,7 +20,7 @@ is unaffected. Order matters: the first plugin to deny wins.
 ## Built in
 
 ```ts
-import { auditLog, killSwitch, rateLimit } from "usherjs";
+import { auditLog, killSwitch, rateLimit } from "@usherjs/core";
 
 plugins: [
   auditLog({ sink: storage.auditSink }),

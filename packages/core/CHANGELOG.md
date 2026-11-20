@@ -1,4 +1,4 @@
-# usherjs
+# @usherjs/core
 
 ## 0.1.0
 

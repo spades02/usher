@@ -8,7 +8,7 @@ In production, connected agents must survive restarts, and every instance
 must agree. Use your database:
 
 ```ts
-import { postgresExecutor, sqlStorage, sqliteExecutor } from "usherjs";
+import { postgresExecutor, sqlStorage, sqliteExecutor } from "@usherjs/core";
 
 const storage = sqlStorage(postgresExecutor(pool)); // pg, Neon, Vercel Postgres, PGlite
 // or: sqlStorage(sqliteExecutor(db))               // node:sqlite, better-sqlite3, bun:sqlite
@@ -27,7 +27,7 @@ sample wires all three.
 - **Your own migration tool**: print the SQL and paste it into a migration:
 
   ```sh
-  npx usherjs sql postgres --prefix usher_
+  npx @usherjs/core sql postgres --prefix usher_
   ```
 
 Tables are prefixed `usher_` by default (`tablePrefix` option), so they live
@@ -61,7 +61,7 @@ For a non-SQL store (Mongo, DynamoDB, Redis), implement `AuthStore`,
 suite Usher's own stores pass:
 
 ```ts
-import { authStoreConformance } from "usherjs/testing";
+import { authStoreConformance } from "@usherjs/core/testing";
 
 for (const c of authStoreConformance()) test(c.name, () => c.run(myStore()));
 ```

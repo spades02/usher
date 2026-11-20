@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * `npx usherjs sql [postgres|sqlite] [--prefix usher_]`
- * `npx usherjs serve [usher.config.json]`
+ * `npx @usherjs/core sql [postgres|sqlite] [--prefix usher_]`
+ * `npx @usherjs/core serve [usher.config.json]`
  *
  * Prints Usher's schema for teams that manage migrations with their own tool
  * (Drizzle Kit, Prisma Migrate, Flyway, Rails...). Everyone else can call
@@ -10,9 +10,9 @@
 import { schemaSql } from "./storage/sql.js";
 
 const USAGE = `Usage:
-  usherjs sql <postgres|sqlite> [--prefix usher_]
-  usherjs serve [usher.config.json]
-  usherjs doctor <https://your-app.example> [--base-path /api/usher]
+  npx @usherjs/core sql <postgres|sqlite> [--prefix usher_]
+  npx @usherjs/core serve [usher.config.json]
+  npx @usherjs/core doctor <https://your-app.example> [--base-path /api/usher]
 
 Prints the SQL for Usher's tables. Paste it into a migration, or call
 sqlStorage(db).migrate() at startup instead.
@@ -37,7 +37,7 @@ export function main(args: readonly string[]): { code: number; out: string } {
   }
 }
 
-/** `usherjs doctor <url> [--base-path /api/usher]` */
+/** `npx @usherjs/core doctor <url> [--base-path /api/usher]` */
 export async function doctor(args: readonly string[], fetchFn?: typeof fetch): Promise<{ code: number; out: string }> {
   const [url, flag, basePath] = args;
   if (!url || !/^https?:\/\//.test(url) || (flag !== undefined && (flag !== "--base-path" || !basePath))) return { code: 1, out: USAGE };

@@ -1,4 +1,4 @@
-import { auditLog, createUsher, rateLimit, sqlStorage } from "usherjs";
+import { auditLog, createUsher, rateLimit, sqlStorage } from "@usherjs/core";
 import { db } from "./db.js";
 import { getSession } from "./session.js";
 import { cancelOrder, listOrders } from "./tools.js";

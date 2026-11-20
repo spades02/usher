@@ -1,5 +1,5 @@
+import { verifyWebhook } from "@usherjs/core";
 import express from "express";
-import { verifyWebhook } from "usherjs";
 import { orders } from "./session.js";
 
 const cancelOrder = orders.cancel;

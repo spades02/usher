@@ -13,7 +13,7 @@ Two custom elements that work in any framework, or none.
 <usher-agents></usher-agents>     <!-- account settings -->
 ```
 
-With a bundler, `import "usherjs/elements"` instead. Importing it during
+With a bundler, `import "@usherjs/core/elements"` instead. Importing it during
 server rendering is a no-op.
 
 ## `<usher-connect>`

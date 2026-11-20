@@ -1,6 +1,6 @@
 /**
  * Checks a deployed Usher from the outside, the way an agent will see it
- * (`npx usherjs doctor https://shop.example`). Most deployment bugs are
+ * (`npx @usherjs/core doctor https://shop.example`). Most deployment bugs are
  * routing bugs: a missing `/.well-known` mount, or a proxy that changes
  * the origin. Both make agents fail at "connect" with unhelpful errors.
  */

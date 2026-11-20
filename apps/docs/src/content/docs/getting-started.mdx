@@ -19,7 +19,7 @@ end in CI: an agent connects and calls the tools below.
 1. **Install.** Usher needs Node 22.13+ and works with any [Standard Schema](https://standardschema.dev) library. Zod 4 is shown here.
 
    ```sh
-   npm install usherjs zod
+   npm install @usherjs/core zod
    ```
 
 2. **Define tools.** These are the actions an agent may take for a customer. `effect` is required: `read`, `write` or `destructive`. Destructive tools ask the customer to approve each call.
@@ -41,7 +41,7 @@ end in CI: an agent connects and calls the tools below.
 5. **Check the deployment** the way an agent will see it:
 
    ```sh
-   npx usherjs doctor https://your-app.example
+   npx @usherjs/core doctor https://your-app.example
    ```
 
 6. **Connect an assistant.** In Claude, ChatGPT or Cursor, add a custom connector with the URL `https://your-app.example/api/usher/mcp`. You'll be sent to your own login, then to a consent page listing your tools. Ask the assistant to list your orders.

@@ -1,6 +1,6 @@
 ---
 title: Deployment
-description: A production checklist, and npx usherjs doctor.
+description: A production checklist, and npx @usherjs/core doctor.
 ---
 
 ## Checklist
@@ -20,7 +20,7 @@ description: A production checklist, and npx usherjs doctor.
 ## Check it from the outside
 
 ```sh
-npx usherjs doctor https://shop.example
+npx @usherjs/core doctor https://shop.example
 ```
 
 ```text

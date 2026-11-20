@@ -7,8 +7,8 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { checkDeployment, postgresExecutor, webhookTool } from "usherjs";
-import { resolveEnv, standaloneConfigSchema } from "usherjs/standalone";
+import { checkDeployment, postgresExecutor, webhookTool } from "@usherjs/core";
+import { resolveEnv, standaloneConfigSchema } from "@usherjs/core/standalone";
 import { afterEach, describe, expect, it, vi } from "vitest";
 // The core package's test helpers play the agent (official MCP SDK client) and the customer's browser.
 import { BASE, callTool, connectAgent, decideInBrowser, errorPayload, fetchVia, readRpc } from "../../../packages/core/test/helpers.js";

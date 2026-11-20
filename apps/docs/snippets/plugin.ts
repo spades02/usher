@@ -1,4 +1,4 @@
-import { definePlugin } from "usherjs";
+import { definePlugin } from "@usherjs/core";
 
 // Plugins can only restrict (ADR 0006). This one keeps irreversible actions to office hours.
 export const officeHours = definePlugin({

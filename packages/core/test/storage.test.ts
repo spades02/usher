@@ -78,7 +78,7 @@ describe("migrations", () => {
     expect(() => sqlStorage(db, { tablePrefix: "x; DROP TABLE users; --" })).toThrow(/tablePrefix/);
   });
 
-  it("print as SQL for external migration tools (npx usherjs sql)", () => {
+  it("print as SQL for external migration tools (npx @usherjs/core sql)", () => {
     const pg = schemaSql("postgres", { tablePrefix: "app_" });
     expect(pg).toContain("CREATE TABLE IF NOT EXISTS app_grants");
     expect(pg).toContain("BIGSERIAL PRIMARY KEY");

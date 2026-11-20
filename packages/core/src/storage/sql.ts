@@ -139,7 +139,7 @@ function prefixOf(options: SqlStorageOptions): string {
   return prefix;
 }
 
-/** The full schema as SQL text, for teams that run migrations with their own tool (`npx usherjs sql`). */
+/** The full schema as SQL text, for teams that run migrations with their own tool (`npx @usherjs/core sql`). */
 export function schemaSql(dialect: SqlExecutor["dialect"], options: SqlStorageOptions = {}): string {
   const p = prefixOf(options);
   return migrations(dialect, p)

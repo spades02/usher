@@ -16,7 +16,7 @@ The tests include a real Postgres server, started from official binaries by
 |---|---|
 | `pnpm test` | All tests |
 | `pnpm format` | Format and auto-fix lint (Biome) |
-| `pnpm --filter usherjs api` | Regenerate `packages/core/api/*.api.md` after a public API change |
+| `pnpm --filter @usherjs/core api` | Regenerate `packages/core/api/*.api.md` after a public API change |
 | `pnpm changeset` | Describe your change for the changelog |
 
 ## How changes are made

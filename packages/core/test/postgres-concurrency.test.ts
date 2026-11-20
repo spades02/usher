@@ -26,6 +26,10 @@ beforeAll(async () => {
   await server.initialise();
   await server.start();
   pool = new pg.Pool({ host: "127.0.0.1", port, user: "usher", password: "usher", database: "postgres", max: RACERS });
+  // Stopping the server in afterAll terminates connections (57P01). That is
+  // expected teardown, not a test failure, so don't let it surface as unhandled.
+  pool.on("error", () => {});
+  pool.on("connect", (client) => client.on("error", () => {}));
   // Open every connection up front, so the races below really run in parallel.
   const clients = await Promise.all(Array.from({ length: RACERS }, () => pool.connect()));
   for (const c of clients) c.release();
@@ -33,7 +37,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool?.end();
-  await server?.stop();
+  // On Windows runners, stop() can wait on the postmaster's exit long after
+  // the tests are done. Give it 30 s, then move on: the runner reaps it.
+  await Promise.race([server?.stop().catch(() => {}), new Promise((r) => setTimeout(r, 30_000).unref())]);
   await rm(dir, { recursive: true, force: true }).catch(() => {});
 }, 60_000);
 

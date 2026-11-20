@@ -42,7 +42,7 @@
     }
   },
   "bin": {
-    "usherjs": "./dist/cli.js"
+    "usherjs": "dist/cli.js"
   },
   "files": [
     "dist"
